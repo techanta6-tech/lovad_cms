@@ -475,36 +475,24 @@ export const mockAreas: Area[] = [
     id: "area-1",
     name: "Checkin Area",
     code: "CAM_ZONE_A",
-    status: "online",
-    cameraCount: 3,
-    scenario: "Phân tích khuôn mặt & Điểm danh nhân sự",
     cameras: [
       {
-        id: "cam-1-1",
-        name: "Camera Checkin Chính 01",
+        camera_id: "cam-1-1",
+        camera_name: "Camera Checkin Chính 01",
         ip: "192.168.1.15",
         port: 554,
         status: "online",
         resolution: "1920x1080 (1080P)",
-        fps: 30
+        role: ["checkin"]
       },
       {
-        id: "cam-1-2",
-        name: "Camera Checkin Phụ 02",
+        camera_id: "cam-1-2",
+        camera_name: "Camera Checkin Phụ 02",
         ip: "192.168.1.16",
         port: 554,
         status: "online",
         resolution: "1920x1080 (1080P)",
-        fps: 25
-      },
-      {
-        id: "cam-1-3",
-        name: "Camera Góc Rộng Sảnh Đợi",
-        ip: "192.168.1.17",
-        port: 554,
-        status: "online",
-        resolution: "2560x1440 (2K)",
-        fps: 20
+        role: ["checkin"]
       }
     ]
   },
@@ -512,27 +500,24 @@ export const mockAreas: Area[] = [
     id: "area-2",
     name: "Checkout Area",
     code: "CAM_ZONE_B",
-    status: "online",
-    cameraCount: 2,
-    scenario: "Giám sát lối ra & Cảnh báo an ninh",
     cameras: [
       {
-        id: "cam-2-1",
-        name: "Camera Lối Ra 01",
+        camera_id: "cam-2-1",
+        camera_name: "Camera Lối Ra 01",
         ip: "192.168.1.25",
         port: 554,
         status: "online",
         resolution: "1920x1080 (1080P)",
-        fps: 30
+        role: ["checkout"]
       },
       {
-        id: "cam-2-2",
-        name: "Camera Lối Ra Dự Phòng 02",
+        camera_id: "cam-2-2",
+        camera_name: "Camera Lối Ra Dự Phòng 02",
         ip: "192.168.1.26",
         port: 554,
         status: "online",
         resolution: "1280x720 (720P)",
-        fps: 15
+        role: ["checkout"]
       }
     ]
   },
@@ -540,37 +525,15 @@ export const mockAreas: Area[] = [
     id: "area-3",
     name: "Lobby Area",
     code: "CAM_ZONE_C",
-    status: "online",
-    cameraCount: 1,
-    scenario: "Theo dõi lưu lượng khách hàng",
     cameras: [
       {
-        id: "cam-3-1",
-        name: "Camera Toàn Cảnh Sảnh Trực",
+        camera_id: "cam-3-1",
+        camera_name: "Camera Toàn Cảnh Sảnh Trực",
         ip: "192.168.1.35",
         port: 554,
         status: "online",
         resolution: "3840x2160 (4K UltraHD)",
-        fps: 15
-      }
-    ]
-  },
-  {
-    id: "area-4",
-    name: "Server Room",
-    code: "CAM_ZONE_D",
-    status: "offline",
-    cameraCount: 1,
-    scenario: "Kiểm soát truy cập phòng máy chủ",
-    cameras: [
-      {
-        id: "cam-4-1",
-        name: "Camera Hồng Ngoại Đêm",
-        ip: "192.168.1.45",
-        port: 8554,
-        status: "offline",
-        resolution: "1920x1080 (1080P)",
-        fps: 0
+        role: ["checkin", "checkout"]
       }
     ]
   }

@@ -1,0 +1,293 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client/dvms"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://postgres:@localhost:5433/dvms_server?connect_timeout=15"
+}
+
+model camera_cfg {
+  id            String    @id @db.VarChar(40)
+  name          String?   @db.VarChar(64)
+  search_tag    String?   @db.VarChar(256)
+  cfg_data      Bytes?
+  user_id_owner String?   @db.VarChar(40)
+  time_created  DateTime? @db.Timestamp(6)
+  time_modified DateTime? @db.Timestamp(6)
+
+  @@index([user_id_owner], type: Hash)
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+/// This model contains an index with non-default null sort order and requires additional setup for migrations. Visit https://pris.ly/d/default-index-null-ordering for more info.
+model camera_storage_hour_parent {
+  id             String    @default(dbgenerated("uuid_generate_v1()")) @db.Uuid
+  partition_path String?   @db.VarChar(8)
+  camera_id      String?   @db.VarChar(40)
+  use_disk_mb    Float?    @db.Real
+  time_start     DateTime? @db.Timestamp(6)
+  time_end       DateTime? @db.Timestamp(6)
+  total_dur      Int?      @db.SmallInt
+  lost_dur       Int?      @db.SmallInt
+  partition_key  Int?
+
+  @@index([camera_id], type: Hash)
+  @@index([id], type: Hash)
+  @@index([time_start(sort: Desc)])
+  @@ignore
+}
+
+model camera_storage_total {
+  partition_path String    @db.VarChar(8)
+  camera_id      String    @db.VarChar(40)
+  use_disk_mb    Float?    @db.Real
+  time_start     DateTime? @db.Timestamp(6)
+  time_end       DateTime? @db.Timestamp(6)
+  total_dur      Int?
+  lost_dur       Int?
+
+  @@id([partition_path, camera_id], map: "camera_storage_total_pk")
+}
+
+model channel_cfg {
+  id                String    @id @db.VarChar(40)
+  name              String?   @db.VarChar(64)
+  camera_mapping_id String?   @db.VarChar(64)
+  search_tag        String?   @db.VarChar(256)
+  cfg_data          Bytes?
+  user_id_owner     String?   @db.VarChar(40)
+  time_created      DateTime? @db.Timestamp(6)
+  time_modified     DateTime? @db.Timestamp(6)
+
+  @@index([camera_mapping_id], type: Hash)
+  @@index([user_id_owner], type: Hash)
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model channel_record_parent {
+  id            String    @default(dbgenerated("uuid_generate_v1()")) @db.Uuid
+  date_record   DateTime? @db.Timestamp(6)
+  channel_id    String?   @db.VarChar(40)
+  partition_key Int?
+
+  @@index([channel_id], type: Hash)
+  @@index([id], type: Hash)
+  @@ignore
+}
+
+model device_owner_cfg {
+  id            String    @id @db.VarChar(128)
+  name          String?   @db.VarChar(256)
+  time_created  DateTime? @db.Timestamp(6)
+  time_modified DateTime? @db.Timestamp(6)
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+/// This model contains an index with non-default null sort order and requires additional setup for migrations. Visit https://pris.ly/d/default-index-null-ordering for more info.
+model event_record_parent {
+  id             String    @default(dbgenerated("uuid_generate_v1()")) @db.Uuid
+  time_record_id String?   @db.Uuid
+  type_event     Int?      @db.SmallInt
+  time_start     DateTime? @db.Timestamp(6)
+  time_end       DateTime? @db.Timestamp(6)
+  partition_key  Int?
+
+  @@index([id], type: Hash)
+  @@index([time_record_id], type: Hash)
+  @@index([time_start(sort: Desc)])
+  @@ignore
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// This model contains an index with non-default null sort order and requires additional setup for migrations. Visit https://pris.ly/d/default-index-null-ordering for more info.
+model event_vms_sync_parent {
+  id             String    @db.VarChar(40)
+  lcms_server_id String?   @db.VarChar(40)
+  event_vms_id   String?   @db.VarChar(40)
+  source_id      String?   @db.VarChar(40)
+  event_time     DateTime? @db.Timestamp(6)
+  data_file_path String?   @db.VarChar(280)
+  partition_key  Int
+
+  @@id([id, partition_key])
+  @@index([event_time(sort: Desc)])
+  @@index([event_vms_id], type: Hash)
+  @@index([source_id], type: Hash)
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+model event_vms_sync_update_parent {
+  index             BigInt  @default(autoincrement())
+  update_table_type Int?    @db.SmallInt
+  lcms_server_id    String? @db.VarChar(40)
+  event_id          String? @db.VarChar(40)
+  data_file_path    String? @db.VarChar(280)
+  partition_key     Int
+
+  @@id([index, partition_key])
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// This model contains an index with non-default null sort order and requires additional setup for migrations. Visit https://pris.ly/d/default-index-null-ordering for more info.
+model face_index_sync_parent {
+  id             String    @db.VarChar(40)
+  lcms_server_id String?   @db.VarChar(40)
+  face_index_id  String?   @db.VarChar(40)
+  event_time     DateTime? @db.Timestamp(6)
+  data_file_path String?   @db.VarChar(280)
+  partition_key  Int
+
+  @@id([id, partition_key])
+  @@index([event_time(sort: Desc)])
+  @@index([face_index_id], type: Hash)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model human_info {
+  id                     String    @id @db.VarChar(40)
+  lcms_server_id         String?   @db.VarChar(40)
+  document_id            String?   @db.VarChar(40)
+  id_type                String?   @db.VarChar(64)
+  release_date           DateTime? @db.Timestamp(6)
+  issued_by              String?   @db.VarChar(255)
+  full_name              String?   @db.VarChar(255)
+  gender                 Int?      @db.SmallInt
+  birthday               DateTime? @db.Timestamp(6)
+  phone_number           String?   @db.VarChar(20)
+  email                  String?   @db.VarChar(100)
+  address                String?   @db.VarChar(255)
+  note                   String?   @db.VarChar
+  company                String?   @db.VarChar(255)
+  list_ids               String[]  @db.VarChar(40)
+  is_deleted             Boolean?  @default(false)
+  avatars                Bytes[]
+  id_scan_images         Bytes[]
+  other_images           Bytes[]
+  root_face_images       Bytes[]
+  cropped_face_images    Bytes[]
+  face_features          Float[]   @db.Real
+  time_created           DateTime? @db.Timestamp(6)
+  time_modified          DateTime? @db.Timestamp(6)
+  height                 Float?
+  weight                 Float?
+  certificates_json_text String?
+
+  @@index([lcms_server_id], type: Hash)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model human_list {
+  id             String    @id @db.VarChar(40)
+  lcms_server_id String?   @db.VarChar(40)
+  name           String?   @db.VarChar(255)
+  is_deleted     Boolean?  @default(false)
+  time_created   DateTime? @db.Timestamp(6)
+  time_modified  DateTime? @db.Timestamp(6)
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// This model contains an index with non-default null sort order and requires additional setup for migrations. Visit https://pris.ly/d/default-index-null-ordering for more info.
+model monitoring_slot_summary_sync_parent {
+  id              String    @db.VarChar(40)
+  lcms_server_id  String?   @db.VarChar(40)
+  slot_summary_id String?   @db.VarChar(40)
+  event_time      DateTime? @db.Timestamp(6)
+  data_file_path  String?   @db.VarChar(280)
+  partition_key   Int
+
+  @@id([id, partition_key])
+  @@index([event_time(sort: Desc)])
+  @@index([slot_summary_id], type: Hash)
+}
+
+model nvr_cfg {
+  id            String    @id @db.VarChar(40)
+  name          String?   @db.VarChar(64)
+  search_tag    String?   @db.VarChar(256)
+  cfg_data      Bytes?
+  user_id_owner String?   @db.VarChar(40)
+  time_created  DateTime? @db.Timestamp(6)
+  time_modified DateTime? @db.Timestamp(6)
+
+  @@index([user_id_owner], type: Hash)
+}
+
+model nvr_channel_cfg {
+  id                String    @id @db.VarChar(40)
+  nvr_id            String?   @db.VarChar(40)
+  nvr_channel_index Int?      @db.SmallInt
+  name              String?   @db.VarChar(64)
+  search_tag        String?   @db.VarChar(256)
+  cfg_data          Bytes?
+  user_id_owner     String?   @db.VarChar(40)
+  time_created      DateTime? @db.Timestamp(6)
+  time_modified     DateTime? @db.Timestamp(6)
+
+  @@index([nvr_id], type: Hash)
+  @@index([user_id_owner], type: Hash)
+}
+
+/// This table is a partition table and requires additional setup for migrations. Visit https://pris.ly/d/partition-tables for more info.
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model time_record_parent {
+  id                String    @default(dbgenerated("uuid_generate_v1()")) @db.Uuid
+  channel_record_id String?   @db.Uuid
+  stream_id         BigInt?
+  camera_id         String?   @db.VarChar(40)
+  mode_record       Int?      @db.SmallInt
+  partition_path    String?   @db.VarChar(8)
+  time_start        DateTime? @db.Timestamp(6)
+  time_end          DateTime? @db.Timestamp(6)
+  average_fps       Float?    @db.Real
+  partition_key     Int?
+
+  @@index([channel_record_id], type: Hash)
+  @@index([id], type: Hash)
+  @@index([time_start])
+  @@ignore
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model vehicle_info {
+  id                  String    @id @db.VarChar(40)
+  lcms_server_id      String?   @db.VarChar(40)
+  license_plate       String?   @db.VarChar(40)
+  name                String?   @db.VarChar(255)
+  type                Int?      @db.SmallInt
+  manufacturer        Int?      @db.SmallInt
+  color               Int?      @db.SmallInt
+  color_license_plate Int?      @db.SmallInt
+  images              Bytes[]
+  vehicle_payload     Float?    @db.Real
+  note                String?
+  list_ids            String[]  @db.VarChar(40)
+  is_deleted          Boolean?  @default(false)
+  time_created        DateTime? @db.Timestamp(6)
+  time_modified       DateTime? @db.Timestamp(6)
+  card_code           String?   @unique @db.VarChar(40)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model vehicle_list {
+  id             String    @id @db.VarChar(40)
+  lcms_server_id String?   @db.VarChar(40)
+  name           String?   @db.VarChar(255)
+  is_deleted     Boolean?  @default(false)
+  time_created   DateTime? @db.Timestamp(6)
+  time_modified  DateTime? @db.Timestamp(6)
+}
+
+model version_control {
+  id          String    @id @default(dbgenerated("uuid_generate_v1()")) @db.Uuid
+  type        Int?
+  tablename   String?   @db.VarChar(64)
+  version     Int?
+  timeupdated DateTime? @db.Timestamp(6)
+
+  @@index([version])
+}

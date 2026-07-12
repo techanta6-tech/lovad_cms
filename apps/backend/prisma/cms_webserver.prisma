@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/client/cms_webserver"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://postgres:@localhost:5433/cms_webserver?connect_timeout=15"
+}
+
+model location {
+  id            String   @id @db.Uuid
+  name          String   @db.VarChar(255)
+  code          String   @unique @db.VarChar(64)
+  time_created  DateTime @default(now())
+  time_modified DateTime @updatedAt
+
+  camera_binds location_camera_bind[]
+  meetings     meeting[]
+
+  @@map("location")
+}
+
+model location_camera_bind {
+  id            String   @id @db.Uuid
+  location_id   String   @db.Uuid
+  camera_id     String   @db.VarChar(40)
+  role          String[] @default([])
+  time_created  DateTime @default(now())
+  time_modified DateTime @updatedAt
+
+  location location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@index([location_id])
+  @@index([camera_id])
+  @@map("location_camera_bind")
+}
+
+model meeting {
+  id                String   @id @db.Uuid
+  title             String   @db.VarChar(255)
+  location_id       String   @db.Uuid
+  group_ids         String[]
+  // Giờ bắt đầu/kết thúc buổi họp, định dạng "HH:mm".
+  time_start        String   @db.VarChar(5)
+  time_end          String   @db.VarChar(5)
+  date_organize     DateTime @db.Date
+  // Số phút cho phép chấm công trước giờ họp / sau giờ họp.
+  time_before_begin Int      @default(30)
+  time_after_end    Int      @default(30)
+  time_created      DateTime @default(now())
+  time_modified     DateTime @updatedAt
+
+  location location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@index([location_id])
+  @@index([date_organize])
+  @@map("meeting")
+}
+
+
+
