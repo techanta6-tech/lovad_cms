@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client/cms_webserver';
+import { Prisma } from '../../generated/cms_webserver';
 import { CmsPrismaService } from '../prisma/cms-prisma.service';
 import { LcmsPrismaService } from '../prisma/lcms-prisma.service';
 
@@ -265,7 +265,7 @@ export class MeetingService {
     const startTime = getOffsetDateTime(meeting.date_organize, meeting.time_start, -meeting.time_before_begin);
     const endTime = getOffsetDateTime(meeting.date_organize, meeting.time_end, meeting.time_after_end);
 
-    // 3. Execute queries
+        // 3. Execute queries
     const query = `
       SELECT 
           es.object_id,
@@ -273,7 +273,10 @@ export class MeetingService {
           h.full_name,
           h.cropped_face_images,
           ca.camera_friendly_name AS camera_name,
-          ca.area_name
+          ca.area_name,
+          -- Bổ sung 2 trường ảnh chụp sự kiện thực tế từ ổ đĩa
+          ei_full.image_path AS full_image_path, -- Đường dẫn ảnh toàn cảnh (type = 1)
+          ei_face.image_path AS face_image_path  -- Đường dẫn ảnh cắt khuôn mặt (type = 4)
       FROM event_vms_parent ev
       INNER JOIN event_statistic_parent es 
           ON ev.source_id = es.id
@@ -281,6 +284,12 @@ export class MeetingService {
           ON es.object_id = h.id
       LEFT JOIN camera_area_event_source ca 
           ON es.source_id = ca.area_id
+      -- LEFT JOIN lấy ảnh toàn cảnh (Type = 1)
+      LEFT JOIN event_image_parent ei_full
+          ON ev.source_id = ei_full.statistic_id AND ei_full.type = 1
+      -- LEFT JOIN lấy ảnh khuôn mặt tại sự kiện (Type = 4)
+      LEFT JOIN event_image_parent ei_face
+          ON ev.source_id = ei_face.statistic_id AND ei_face.type = 4
       WHERE 
           ev.create_time >= $1 
           AND ev.create_time <= $2
@@ -292,8 +301,30 @@ export class MeetingService {
       ORDER BY ev.create_time DESC;
     `;
 
+    const mapEvent = (e: any) => {
+      let faceImgBase64: string | null = null;
+      if (e.cropped_face_images) {
+        const buffers = e.cropped_face_images;
+        if (Array.isArray(buffers) && buffers.length > 0) {
+          const buf = buffers[0];
+          if (buf) {
+            const rawBuf = Buffer.isBuffer(buf) ? buf : (buf.data ? Buffer.from(buf.data) : null);
+            if (rawBuf) {
+              faceImgBase64 = `data:image/jpeg;base64,${rawBuf.toString('base64')}`;
+            }
+          }
+        } else if (Buffer.isBuffer(buffers)) {
+          faceImgBase64 = `data:image/jpeg;base64,${buffers.toString('base64')}`;
+        }
+      }
+      return {
+        ...e,
+        cropped_face_images: faceImgBase64 ? [faceImgBase64] : []
+      };
+    };
+
     // Run check-in and check-out queries in parallel
-    const [checkinEvents, checkoutEvents] = await Promise.all([
+    const [checkinEventsRaw, checkoutEventsRaw] = await Promise.all([
       checkinCameraIds.length > 0
         ? this.lcms.$queryRawUnsafe<any[]>(query, startTime, endTime, checkinCameraIds, meeting.group_ids)
         : Promise.resolve([]),
@@ -302,6 +333,9 @@ export class MeetingService {
         : Promise.resolve([]),
     ]);
 
+    const checkinEvents = checkinEventsRaw.map(mapEvent);
+    const checkoutEvents = checkoutEventsRaw.map(mapEvent);
+
     return {
       checkinEvents,
       checkoutEvents,
@@ -309,5 +343,120 @@ export class MeetingService {
       paramsCheckin: { startTime, endTime, checkinCameraIds, group_ids: meeting.group_ids },
       paramsCheckout: { startTime, endTime, checkoutCameraIds, group_ids: meeting.group_ids }
     };
+  }
+
+  async getEventLogs() {
+    const lists = await this.lcms.human_list.findMany({
+      where: { is_deleted: { not: true } },
+      select: { id: true, name: true }
+    });
+    const listMap = new Map<string, string>(lists.map(l => [l.id, l.name]));
+
+    const binds = await this.cms.location_camera_bind.findMany({
+      include: {
+        location: true
+      }
+    });
+    const locationNameByCameraId = new Map<string, string>();
+    for (const bind of binds) {
+      if (bind.camera_id && bind.location) {
+        locationNameByCameraId.set(bind.camera_id, bind.location.name);
+      }
+    }
+
+    const query = `
+      SELECT 
+          ev.id AS event_id,
+          es.object_id,
+          es.camera_event_id,
+          ev.create_time AS time_created,
+          h.full_name,
+          h.document_id,
+          h.cropped_face_images,
+          h.list_ids,
+          ca.camera_friendly_name AS camera_name,
+          ca.area_name,
+          ei_full.image_path AS full_image_path,
+          ei_face.image_path AS face_image_path
+      FROM event_vms_parent ev
+      INNER JOIN event_statistic_parent es 
+          ON ev.source_id = es.id
+      INNER JOIN human_info h 
+          ON es.object_id = h.id
+      LEFT JOIN camera_area_event_source ca 
+          ON es.source_id = ca.area_id
+      LEFT JOIN event_image_parent ei_full
+          ON ev.source_id = ei_full.statistic_id AND ei_full.type = 1
+      LEFT JOIN event_image_parent ei_face
+          ON ev.source_id = ei_face.statistic_id AND ei_face.type = 4
+      WHERE 
+          ev.is_valid = true 
+          AND ev.is_deleted = false
+      ORDER BY ev.create_time DESC
+      LIMIT 100;
+    `;
+
+    const rawEvents = await this.lcms.$queryRawUnsafe<any[]>(query);
+
+    const mapEvent = (e: any, index: number) => {
+      let faceImgBase64: string | null = null;
+      if (e.cropped_face_images) {
+        const buffers = e.cropped_face_images;
+        if (Array.isArray(buffers) && buffers.length > 0) {
+          const buf = buffers[0];
+          if (buf) {
+            const rawBuf = Buffer.isBuffer(buf) ? buf : (buf.data ? Buffer.from(buf.data) : null);
+            if (rawBuf) {
+              faceImgBase64 = `data:image/jpeg;base64,${rawBuf.toString('base64')}`;
+            }
+          }
+        } else if (Buffer.isBuffer(buffers)) {
+          faceImgBase64 = `data:image/jpeg;base64,${buffers.toString('base64')}`;
+        }
+      }
+
+      let thoiGianStr = '';
+      if (e.time_created) {
+        const d = new Date(e.time_created);
+        d.setHours(d.getHours() + 7);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const hour = String(d.getHours()).padStart(2, '0');
+        const minute = String(d.getMinutes()).padStart(2, '0');
+        const second = String(d.getSeconds()).padStart(2, '0');
+        thoiGianStr = `${day}/${month}/${year}-${hour}:${minute}:${second}`;
+      }
+
+      const pb = (e.list_ids || []).map((lid: string) => listMap.get(lid) || lid);
+      const groupStr = pb.join(', ') || 'Mặc định';
+
+      const areaName = e.camera_event_id ? locationNameByCameraId.get(e.camera_event_id) : undefined;
+      const displayArea = areaName || e.area_name || 'Không xác định';
+
+      return {
+        stt: index + 1,
+        id: e.event_id,
+        vung: displayArea,
+        ten: e.full_name || 'Không tên',
+        ma: e.document_id || e.object_id || '',
+        danhSach: groupStr,
+        thoiGian: thoiGianStr,
+        avatarSeed: '',
+        faceImgBase64,
+        face_image_path: e.face_image_path,
+        full_image_path: e.full_image_path,
+        accuracy: 95.0
+      };
+    };
+    const result = rawEvents.map((e, idx) => mapEvent(e, idx));
+    console.log('--- EVENT LOGS QUERY RESULT ---');
+    console.log(`Total events fetched: ${result.length}`);
+    console.log(result.slice(0, 10).map(r => ({
+      ...r,
+      faceImgBase64: r.faceImgBase64 ? `${r.faceImgBase64.substring(0, 50)}... [truncated]` : null
+    })));
+    console.log('--------------------------------');
+    return result;
   }
 }

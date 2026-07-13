@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client/cms_webserver';
+import { Prisma } from '../../generated/cms_webserver';
 import { CmsPrismaService } from '../prisma/cms-prisma.service';
 import { DvmsPrismaService } from '../prisma/dvms-prisma.service';
 
@@ -38,6 +38,11 @@ export interface CreateCameraBindDto {
 export interface UpdateCameraBindDto {
   camera_id?: string;
   role?: string[];
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUUID(str: string): boolean {
+  return UUID_REGEX.test(str);
 }
 
 // Prisma error code for "unique constraint failed" (e.g. duplicate `code`).
@@ -77,6 +82,7 @@ export class LocationService {
   }
 
   async findOne(id: string): Promise<LocationWithBindings | null> {
+    if (!isUUID(id)) return null;
     const location = await this.cms.location.findUnique({
       where: { id },
       include: {
@@ -127,6 +133,9 @@ export class LocationService {
   }
 
   async update(id: string, dto: UpdateLocationDto): Promise<LocationWithBindings> {
+    if (!isUUID(id)) {
+      throw new NotFoundException(`Không tìm thấy location id "${id}"`);
+    }
     if (dto.name !== undefined && !dto.name.trim()) {
       throw new BadRequestException('name không được để trống');
     }
@@ -168,6 +177,9 @@ export class LocationService {
   }
 
   async remove(id: string): Promise<{ id: string }> {
+    if (!isUUID(id)) {
+      throw new NotFoundException(`Không tìm thấy location id "${id}"`);
+    }
     try {
       // location_camera_bind rows are removed automatically via onDelete: Cascade.
       await this.cms.location.delete({ where: { id } });
@@ -183,6 +195,9 @@ export class LocationService {
   // ---- location_camera_bind ----
 
   async addCameraBind(locationId: string, dto: CreateCameraBindDto) {
+    if (!isUUID(locationId)) {
+      throw new NotFoundException(`Không tìm thấy location id "${locationId}"`);
+    }
     if (!dto.camera_id?.trim()) {
       throw new BadRequestException('camera_id không được để trống');
     }
@@ -205,6 +220,9 @@ export class LocationService {
   }
 
   async updateCameraBind(bindId: string, dto: UpdateCameraBindDto) {
+    if (!isUUID(bindId)) {
+      throw new NotFoundException(`Không tìm thấy camera bind id "${bindId}"`);
+    }
     if (dto.camera_id !== undefined && !dto.camera_id.trim()) {
       throw new BadRequestException('camera_id không được để trống');
     }
@@ -228,6 +246,9 @@ export class LocationService {
   }
 
   async removeCameraBind(bindId: string): Promise<{ id: string }> {
+    if (!isUUID(bindId)) {
+      throw new NotFoundException(`Không tìm thấy camera bind id "${bindId}"`);
+    }
     try {
       await this.cms.location_camera_bind.delete({ where: { id: bindId } });
       return { id: bindId };

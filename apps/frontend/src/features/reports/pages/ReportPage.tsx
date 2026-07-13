@@ -41,6 +41,15 @@ import * as XLSX from 'xlsx';
 import { useApp } from '../../../context/AppContext';
 import { EventLog } from '../../../types';
 
+const resolveImageUrl = (path?: string) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path;
+  }
+  const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+  return `${baseUrl}/media?path=${encodeURIComponent(path)}`;
+};
+
 export const ReportPage = () => {
   const { eventLogs, meetings, areasData, employees } = useApp();
   const [flashActive, setFlashActive] = useState(false);
@@ -58,6 +67,8 @@ export const ReportPage = () => {
       startTime: m.time_start,
       endTime: m.time_end,
       departments: m.groups.map(g => g.name),
+      time_before_begin: m.time_before_begin,
+      time_after_end: m.time_after_end,
     };
   });
 
@@ -86,6 +97,12 @@ export const ReportPage = () => {
   
   // Selected event
   const [selectedEventId, setSelectedEventId] = useState<number>(22);
+
+  useEffect(() => {
+    if (eventLogs && eventLogs.length > 0) {
+      setSelectedEventId(eventLogs[0].stt);
+    }
+  }, [eventLogs]);
 
   // Toast / Export status simulation
   const [exporting, setExporting] = useState(false);
@@ -128,6 +145,8 @@ export const ReportPage = () => {
   } | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [computedAttendeeRoster, setComputedAttendeeRoster] = useState([]);
+  const [inImageIndex, setInImageIndex] = useState(0);
+  const [outImageIndex, setOutImageIndex] = useState(0);
 
   const [hasInitializedAreas, setHasInitializedAreas] = useState(false);
   useEffect(() => {
@@ -436,7 +455,7 @@ export const ReportPage = () => {
                         <thead>
                           <tr className="bg-[#15161f] border-b border-[#21232d] text-[11px] font-bold text-slate-400 tracking-wider sticky top-0 z-10">
                             <th className="py-2.5 px-3 border-r border-[#21232d] text-center w-12">STT</th>
-                            <th className="py-2.5 px-3 border-r border-[#21232d]">Vùng / Kịch Bản</th>
+                            <th className="py-2.5 px-3 border-r border-[#21232d]">Khu Vực</th>
                             <th className="py-2.5 px-3 border-r border-[#21232d]">Tên Đối Tượng</th>
                             <th className="py-2.5 px-3 border-r border-[#21232d]">Mã Đối Tượng</th>
                             <th className="py-2.5 px-3 border-r border-[#21232d]">Nhóm</th>
@@ -586,10 +605,16 @@ export const ReportPage = () => {
                         
                         {/* Selected Person Image */}
                         <img 
-                          src={getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")} 
+                          src={
+                            selectedThumbIndex === 1
+                              ? resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"
+                              : selectedThumbIndex === 0
+                                ? resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
+                                : (currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
+                          } 
                           alt="Face checkin capture"
                           referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover opacity-90 transition duration-300"
+                          className="w-full h-full object-contain opacity-90 transition duration-300"
                         />
 
                         {/* Flash effect animation */}
@@ -622,9 +647,9 @@ export const ReportPage = () => {
                             selectedThumbIndex === 0 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
                           }`}
                         >
-                          {currentSelectedEvent.avatarSeed ? (
+                          {(currentSelectedEvent as any).face_image_path || (currentSelectedEvent as any).faceImgBase64 || currentSelectedEvent.avatarSeed ? (
                             <img 
-                              src={getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")} 
+                              src={resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")} 
                               alt="Crop face close-up"
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover"
@@ -642,7 +667,7 @@ export const ReportPage = () => {
                           }`}
                         >
                           <img 
-                            src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150" 
+                            src={resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"} 
                             alt="Wide background snapshot"
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
@@ -656,9 +681,9 @@ export const ReportPage = () => {
                             selectedThumbIndex === 2 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
                           }`}
                         >
-                          {currentSelectedEvent.avatarSeed ? (
+                          {(currentSelectedEvent as any).faceImgBase64 || (currentSelectedEvent as any).face_image_path || currentSelectedEvent.avatarSeed ? (
                             <img 
-                              src={getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")} 
+                              src={(currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")} 
                               alt="Cropped profile view"
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover scale-150 origin-center"
@@ -668,24 +693,22 @@ export const ReportPage = () => {
                           )}
                         </button>
 
-                        {/* Thumbnail 4: Empty slot (bôi xám, bỏ cái nút có hình camera) */}
-                        <div className="aspect-square rounded border border-[#2d2f3e] bg-[#1c1d24]" />
-                      </div>
-
-                      {/* Dropdown Camera Select Block (Removed) */}
-
-                      {/* Download attached images & videos button with main blue theme */}
-                      <div className="space-y-1.5 border-t border-[#21232d] pt-4">
+                        {/* Thumbnail 4: Tải ảnh & video đính kèm */}
                         <button 
                           onClick={() => {
                             alert("Đang chuẩn bị tải xuống toàn bộ tập tin hình ảnh và video đính kèm chất lượng cao...");
                           }}
-                          className="w-full bg-[#0078d7] hover:bg-[#0062ac] text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center space-x-2 transition-all duration-200 active:scale-95 shadow-md text-xs"
+                          className="aspect-square rounded border border-[#2d2f3e] bg-[#1c1d24] hover:bg-[#252731] hover:border-[#00a2e8] flex flex-col items-center justify-center space-y-1 transition group"
+                          title="Tải các ảnh & video đính kèm"
                         >
-                          <Download size={14} />
-                          <span>Tải các ảnh & video đính kèm</span>
+                          <Download size={18} className="text-slate-400 group-hover:text-[#00a2e8] transition" />
+                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200 transition text-center leading-tight">
+                            Tải ảnh/video
+                          </span>
                         </button>
                       </div>
+
+                      {/* Dropdown Camera Select Block (Removed) */}
                     </div>
                   </div>
                 </div>
@@ -1782,21 +1805,91 @@ export const ReportPage = () => {
 
                           const selectedAttendee = sortedAttendeeRoster.find(r => r.emp.ma === activeSelectedCode);
 
+                          const inImages = [];
+                          if (selectedAttendee && selectedAttendee.thoiGianVao) {
+                            const event = selectedAttendee.emp.entryEvent;
+                            if (event) {
+                              if (event.face_image_path) {
+                                inImages.push({
+                                  url: resolveImageUrl(event.face_image_path),
+                                  label: 'Ảnh khuôn mặt sự kiện'
+                                });
+                              }
+                              if (event.full_image_path) {
+                                inImages.push({
+                                  url: resolveImageUrl(event.full_image_path),
+                                  label: 'Ảnh toàn cảnh sự kiện'
+                                });
+                              }
+                              if (event.cropped_face_images && event.cropped_face_images.length > 0) {
+                                inImages.push({
+                                  url: event.cropped_face_images[0],
+                                  label: 'Ảnh đăng ký'
+                                });
+                              }
+                            }
+                            if (inImages.length === 0) {
+                              inImages.push({
+                                url: getPhotoSrc(selectedAttendee, 'in'),
+                                label: 'Ảnh minh họa'
+                              });
+                            }
+                          }
+
+                          const outImages = [];
+                          if (selectedAttendee && selectedAttendee.thoiGianRa) {
+                            const event = selectedAttendee.emp.exitEvent;
+                            if (event) {
+                              if (event.face_image_path) {
+                                outImages.push({
+                                  url: resolveImageUrl(event.face_image_path),
+                                  label: 'Ảnh khuôn mặt sự kiện'
+                                });
+                              }
+                              if (event.full_image_path) {
+                                outImages.push({
+                                  url: resolveImageUrl(event.full_image_path),
+                                  label: 'Ảnh toàn cảnh sự kiện'
+                                });
+                              }
+                              if (event.cropped_face_images && event.cropped_face_images.length > 0) {
+                               outImages.push({
+                                  url: event.cropped_face_images[0],
+                                  label: 'Ảnh đăng ký'
+                                });
+                              }
+                            }
+                            if (outImages.length === 0) {
+                              outImages.push({
+                                url: getPhotoSrc(selectedAttendee, 'out'),
+                                label: 'Ảnh minh họa'
+                              });
+                            }
+                          }
+
                           // Calculate metrics
                           const totalRosterCount = sortedAttendeeRoster.length;
                           const presentCount = sortedAttendeeRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
                           const deptsCount = Array.from(new Set(sortedAttendeeRoster.map(r => r.emp.danhSach))).length;
 
+                          const beforeBeginSec = (selectedMeetingReport?.time_before_begin ?? 30) * 60;
+                          const afterEndSec = (selectedMeetingReport?.time_after_end ?? 30) * 60;
+                          const startSec = timeStringToSeconds(meetingStartTime);
+                          const endSec = timeStringToSeconds(meetingEndTime);
+
                           const onTimeCount = sortedAttendeeRoster.filter(r => {
-                            if (!r.thoiGianVao) return false;
-                            const [sh, sm] = meetingStartTime.split(':').map(Number);
-                            const [lh, lm] = r.thoiGianVao.split(':').map(Number);
-                            const meetingMinutes = sh * 60 + sm;
-                            const logMinutes = lh * 60 + lm;
-                            return logMinutes <= meetingMinutes + 10;
+                            if (!r.thoiGianVao || !r.thoiGianRa) return false;
+                            const inSec = timeStringToSeconds(r.thoiGianVao);
+                            const outSec = timeStringToSeconds(r.thoiGianRa);
+                            const checkinOk = inSec >= startSec - beforeBeginSec && inSec <= startSec;
+                            const checkoutOk = outSec >= endSec && outSec <= endSec + afterEndSec;
+                            return checkinOk && checkoutOk;
                           }).length;
 
-                          const onTimePercentage = presentCount > 0 ? Math.round((onTimeCount / presentCount) * 100) : 100;
+                          const totalRatioSum = sortedAttendeeRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
+                          const averageAttendancePercentage = totalRosterCount > 0 
+                            ? Math.round(totalRatioSum / totalRosterCount) 
+                            : 100;
 
                           // Meeting pagination calculation
                           const totalMeetingItems = sortedAttendeeRoster.length;
@@ -1838,9 +1931,9 @@ export const ReportPage = () => {
                                 {/* Stat 3 */}
                                 <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
                                   <div className="space-y-0.5 text-left">
-                                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Tỷ lệ đúng giờ</span>
+                                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Phần trăm tham gia</span>
                                     <span className="text-xl font-bold text-white font-mono">
-                                      {onTimePercentage}%
+                                      {averageAttendancePercentage}%
                                     </span>
                                   </div>
                                   <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -1882,7 +1975,11 @@ export const ReportPage = () => {
                                           return (
                                             <tr 
                                               key={emp.ma} 
-                                              onClick={() => setSelectedMeetingEmpCode(emp.ma)}
+                                              onClick={() => {
+                                                 setSelectedMeetingEmpCode(emp.ma);
+                                                 setInImageIndex(0);
+                                                 setOutImageIndex(0);
+                                               }}
                                               className={`cursor-pointer transition-colors ${
                                                 isSelected 
                                                   ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium' 
@@ -1927,21 +2024,48 @@ export const ReportPage = () => {
                                           )}
                                         </div>
                                         <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                          {selectedAttendee.thoiGianVao ? (
+                                          {inImages.length > 0 ? (
                                             <>
                                               <img 
-                                                src={getPhotoSrc(selectedAttendee, 'in')} 
-                                                alt="Ảnh lúc vào phòng" 
-                                                className="w-full h-full object-cover transition-transform group-hover:scale-105" 
+                                                src={inImages[Math.min(inImageIndex, inImages.length - 1)]?.url} 
+                                                alt={inImages[Math.min(inImageIndex, inImages.length - 1)]?.label} 
+                                                className="w-full h-full object-contain transition-transform group-hover:scale-105" 
                                                 referrerPolicy="no-referrer"
                                               />
-                                              <div className={`absolute inset-2 border ${selectedAttendee.entryImageBorderClass} rounded pointer-events-none`}>
+                                              {inImages.length > 1 && (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setInImageIndex(prev => (prev - 1 + inImages.length) % inImages.length);
+                                                    }}
+                                                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                                  >
+                                                    <ChevronLeft size={14} />
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setInImageIndex(prev => (prev + 1) % inImages.length);
+                                                    }}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                                  >
+                                                    <ChevronRight size={14} />
+                                                  </button>
+                                                </>
+                                              )}
+                                              <div className={`absolute inset-2 border ${selectedAttendee.entryImageBorderClass} rounded pointer-events-none z-0`}>
                                                 <div className={`absolute top-0 left-0 w-2 h-2 border-t border-l ${selectedAttendee.entryImageCornersClass}`} />
                                                 <div className={`absolute top-0 right-0 w-2 h-2 border-t border-r ${selectedAttendee.entryImageCornersClass}`} />
                                                 <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l ${selectedAttendee.entryImageCornersClass}`} />
                                                 <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r ${selectedAttendee.entryImageCornersClass}`} />
                                               </div>
-                                              <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.entryMatchBadgeClass}`}>
+                                              <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300 z-10">
+                                                {inImages[Math.min(inImageIndex, inImages.length - 1)]?.label} ({Math.min(inImageIndex, inImages.length - 1) + 1}/{inImages.length})
+                                              </span>
+                                              <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.entryMatchBadgeClass} z-10`}>
                                                 99.2% MATCH
                                               </span>
                                             </>
@@ -1965,21 +2089,48 @@ export const ReportPage = () => {
                                           )}
                                         </div>
                                         <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                          {selectedAttendee.thoiGianRa ? (
+                                          {outImages.length > 0 ? (
                                             <>
                                               <img 
-                                                src={getPhotoSrc(selectedAttendee, 'out')} 
-                                                alt="Ảnh lúc ra khỏi phòng" 
-                                                className="w-full h-full object-cover transition-transform group-hover:scale-105" 
+                                                src={outImages[Math.min(outImageIndex, outImages.length - 1)]?.url} 
+                                                alt={outImages[Math.min(outImageIndex, outImages.length - 1)]?.label} 
+                                                className="w-full h-full object-contain transition-transform group-hover:scale-105" 
                                                 referrerPolicy="no-referrer"
                                               />
-                                              <div className={`absolute inset-2 border ${selectedAttendee.exitImageBorderClass} rounded pointer-events-none`}>
+                                              {outImages.length > 1 && (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setOutImageIndex(prev => (prev - 1 + outImages.length) % outImages.length);
+                                                    }}
+                                                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                                  >
+                                                    <ChevronLeft size={14} />
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setOutImageIndex(prev => (prev + 1) % outImages.length);
+                                                    }}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                                  >
+                                                    <ChevronRight size={14} />
+                                                  </button>
+                                                </>
+                                              )}
+                                              <div className={`absolute inset-2 border ${selectedAttendee.exitImageBorderClass} rounded pointer-events-none z-0`}>
                                                 <div className={`absolute top-0 left-0 w-2 h-2 border-t border-l ${selectedAttendee.exitImageCornersClass}`} />
                                                 <div className={`absolute top-0 right-0 w-2 h-2 border-t border-r ${selectedAttendee.exitImageCornersClass}`} />
                                                 <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l ${selectedAttendee.exitImageCornersClass}`} />
                                                 <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r ${selectedAttendee.exitImageCornersClass}`} />
                                               </div>
-                                              <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.exitMatchBadgeClass}`}>
+                                              <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300 z-10">
+                                                {outImages[Math.min(outImageIndex, outImages.length - 1)]?.label} ({Math.min(outImageIndex, outImages.length - 1) + 1}/{outImages.length})
+                                              </span>
+                                              <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.exitMatchBadgeClass} z-10`}>
                                                 98.6% MATCH
                                               </span>
                                             </>
@@ -2314,9 +2465,9 @@ export const ReportPage = () => {
                           </div>
                         </div>
 
-                        {/* 4. Vùng/Kịch Bản */}
+                        {/* 4. Khu Vực */}
                         <div className="space-y-1 text-left relative">
-                          <label className="text-[11px] text-slate-300 font-semibold block">Vùng/Kịch Bản</label>
+                          <label className="text-[11px] text-slate-300 font-semibold block">Khu Vực</label>
                           <div className="relative">
                             <button 
                               type="button"
@@ -2339,7 +2490,7 @@ export const ReportPage = () => {
                                     <Search size={12} className="text-slate-500 mr-1.5 shrink-0" />
                                     <input 
                                       type="text"
-                                      placeholder="Tìm nhanh vùng..."
+                                      placeholder="Tìm nhanh khu vực..."
                                       value={zoneSearch}
                                       onChange={(e) => setZoneSearch(e.target.value)}
                                       className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-[#00a2e8]"
@@ -2347,7 +2498,7 @@ export const ReportPage = () => {
                                     />
                                   </div>
                                   <div className="max-h-40 overflow-y-auto">
-                                    {["All", "Checkin Area", "Checkout Area", "Lobby Area"]
+                                    {["All", ...areasData.map(a => a.name)]
                                       .filter(z => z === 'All' || z.toLowerCase().includes(zoneSearch.toLowerCase()))
                                       .map(zoneOption => (
                                         <button

@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { 
   Camera, 
   Check, 
@@ -17,17 +17,28 @@ import { useApp } from '../../../context/AppContext';
 // 1. AREAS PAGE COMPONENT
 // ==========================================
 export const AreasPage = () => {
-  const { areasData, devices, createArea, deleteArea, addAreaCamera, removeAreaCamera } = useApp();
+  const { areasData, devices, createArea, deleteArea, addAreaCamera, removeAreaCamera, updateAreaCamera } = useApp();
 
-  const [selectedAreaId, setSelectedAreaId] = useState<string>('area-1');
-  const [areaFaceInCameras, setAreaFaceInCameras] = useState<Record<string, string[]>>({
-    'area-1': ['cam-1-1'],
-    'area-2': ['cam-2-1']
-  });
-  const [areaFaceOutCameras, setAreaFaceOutCameras] = useState<Record<string, string[]>>({
-    'area-1': ['cam-1-2'],
-    'area-2': ['cam-2-2']
-  });
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('');
+
+  useEffect(() => {
+    if (areasData && areasData.length > 0) {
+      const exists = areasData.some(a => a.id === selectedAreaId);
+      if (!exists) {
+        setSelectedAreaId(areasData[0].id);
+      }
+    } else {
+      setSelectedAreaId('');
+    }
+  }, [areasData, selectedAreaId]);
+
+  const selectedArea = areasData.find(a => a.id === selectedAreaId) || areasData[0];
+  const hasAreas = areasData.length > 0;
+
+  const [tempFaceIn, setTempFaceIn] = useState<string[]>([]);
+  const [tempFaceOut, setTempFaceOut] = useState<string[]>([]);
+  const [isSavingRoles, setIsSavingRoles] = useState(false);
+
   const [isFaceInDropdownOpen, setIsFaceInDropdownOpen] = useState<boolean>(false);
   const [isFaceOutDropdownOpen, setIsFaceOutDropdownOpen] = useState<boolean>(false);
   
@@ -102,28 +113,78 @@ export const AreasPage = () => {
     }
   };
 
-  const toggleFaceInCamera = (areaId: string, camId: string) => {
-    setAreaFaceInCameras(prev => {
-      const current = prev[areaId] || [];
-      const updated = current.includes(camId)
-        ? current.filter(id => id !== camId)
-        : [...current, camId];
-      return { ...prev, [areaId]: updated };
-    });
+  useEffect(() => {
+    if (selectedArea) {
+      const inCams = selectedArea.cameras
+        .filter(c => c.role.includes('checkin'))
+        .map(c => c.camera_id);
+      const outCams = selectedArea.cameras
+        .filter(c => c.role.includes('checkout'))
+        .map(c => c.camera_id);
+      setTempFaceIn(inCams);
+      setTempFaceOut(outCams);
+    } else {
+      setTempFaceIn([]);
+      setTempFaceOut([]);
+    }
+  }, [selectedAreaId, areasData]);
+
+  const toggleFaceInCamera = (camId: string) => {
+    setTempFaceIn(prev =>
+      prev.includes(camId) ? prev.filter(id => id !== camId) : [...prev, camId]
+    );
   };
 
-  const toggleFaceOutCamera = (areaId: string, camId: string) => {
-    setAreaFaceOutCameras(prev => {
-      const current = prev[areaId] || [];
-      const updated = current.includes(camId)
-        ? current.filter(id => id !== camId)
-        : [...current, camId];
-      return { ...prev, [areaId]: updated };
-    });
+  const toggleFaceOutCamera = (camId: string) => {
+    setTempFaceOut(prev =>
+      prev.includes(camId) ? prev.filter(id => id !== camId) : [...prev, camId]
+    );
   };
 
-  const selectedArea = areasData.find(a => a.id === selectedAreaId) || areasData[0];
-  const hasAreas = areasData.length > 0;
+  const initialIn = selectedArea
+    ? selectedArea.cameras.filter(c => c.role.includes('checkin')).map(c => c.camera_id)
+    : [];
+  const initialOut = selectedArea
+    ? selectedArea.cameras.filter(c => c.role.includes('checkout')).map(c => c.camera_id)
+    : [];
+
+  const isDifferent = (arr1: string[], arr2: string[]) => {
+    if (arr1.length !== arr2.length) return true;
+    const s1 = new Set(arr1);
+    return arr2.some(item => !s1.has(item));
+  };
+
+  const hasChanges = isDifferent(tempFaceIn, initialIn) || isDifferent(tempFaceOut, initialOut);
+
+  const handleSaveRoles = async () => {
+    if (!selectedArea) return;
+    setIsSavingRoles(true);
+    try {
+      const promises = selectedArea.cameras.map(c => {
+        const nextRoles: string[] = [];
+        if (tempFaceIn.includes(c.camera_id)) {
+          nextRoles.push('checkin');
+        }
+        if (tempFaceOut.includes(c.camera_id)) {
+          nextRoles.push('checkout');
+        }
+        
+        const currentRoles = c.role || [];
+        const rolesChanged = isDifferent(currentRoles, nextRoles);
+        if (rolesChanged) {
+          return updateAreaCamera!(selectedArea.id, c.id, nextRoles);
+        }
+        return Promise.resolve(null);
+      });
+
+      await Promise.all(promises);
+      alert('Đã cập nhật thiết lập chức năng camera thành công!');
+    } catch (err: any) {
+      alert('Không thể lưu thiết lập chức năng: ' + (err.message || 'Lỗi hệ thống'));
+    } finally {
+      setIsSavingRoles(false);
+    }
+  };
 
   return (
                 <div className="flex-1 p-6 flex flex-col space-y-6 overflow-auto">
@@ -250,6 +311,16 @@ export const AreasPage = () => {
                         <Settings size={15} className="text-[#00a2e8]" />
                         <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">THIẾT LẬP CHỨC NĂNG</span>
                       </div>
+                      {hasChanges && (
+                        <button
+                          onClick={handleSaveRoles}
+                          disabled={isSavingRoles}
+                          className="px-3 py-1 bg-[#00a2e8] hover:bg-[#008cc9] disabled:opacity-50 text-white text-[11px] font-semibold rounded-lg flex items-center gap-1 transition-all"
+                        >
+                          {isSavingRoles && <Loader2 size={11} className="animate-spin" />}
+                          Lưu thiết lập
+                        </button>
+                      )}
                     </div>
 
                     {/* Dropdowns / Multiselect Layout */}
@@ -269,7 +340,7 @@ export const AreasPage = () => {
                         >
                           <div className="flex flex-wrap gap-1.5 items-center">
                             {(() => {
-                              const selectedInCams = areaFaceInCameras[selectedArea.id] || [];
+                              const selectedInCams = tempFaceIn;
                               if (selectedInCams.length === 0) {
                                 return <span className="text-slate-500 italic">Chọn camera đi vào...</span>;
                               }
@@ -281,7 +352,7 @@ export const AreasPage = () => {
                                     className="bg-[#00a2e8]/20 text-[#00a2e8] border border-[#00a2e8]/30 px-2 py-0.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 hover:bg-[#00a2e8]/30 transition"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      toggleFaceInCamera(selectedArea.id, camId);
+                                      toggleFaceInCamera(camId);
                                     }}
                                   >
                                     {cam ? cam.camera_name : camId}
@@ -308,12 +379,12 @@ export const AreasPage = () => {
                                 </div>
                               ) : (
                                 selectedArea.cameras.map(cam => {
-                                  const selectedInCams = areaFaceInCameras[selectedArea.id] || [];
+                                  const selectedInCams = tempFaceIn;
                                   const isChecked = selectedInCams.includes(cam.camera_id);
                                   return (
                                     <div 
                                       key={cam.camera_id}
-                                      onClick={() => toggleFaceInCamera(selectedArea.id, cam.camera_id)}
+                                      onClick={() => toggleFaceInCamera(cam.camera_id)}
                                       className="flex items-center justify-between p-2.5 hover:bg-[#20222f] cursor-pointer transition"
                                     >
                                       <div className="flex items-center space-x-2">
@@ -350,7 +421,7 @@ export const AreasPage = () => {
                         >
                           <div className="flex flex-wrap gap-1.5 items-center">
                             {(() => {
-                              const selectedOutCams = areaFaceOutCameras[selectedArea.id] || [];
+                              const selectedOutCams = tempFaceOut;
                               if (selectedOutCams.length === 0) {
                                 return <span className="text-slate-500 italic">Chọn camera đi ra...</span>;
                               }
@@ -362,7 +433,7 @@ export const AreasPage = () => {
                                     className="bg-[#00a2e8]/20 text-[#00a2e8] border border-[#00a2e8]/30 px-2 py-0.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 hover:bg-[#00a2e8]/30 transition"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      toggleFaceOutCamera(selectedArea.id, camId);
+                                      toggleFaceOutCamera(camId);
                                     }}
                                   >
                                     {cam ? cam.camera_name : camId}
@@ -389,12 +460,12 @@ export const AreasPage = () => {
                                 </div>
                               ) : (
                                 selectedArea.cameras.map(cam => {
-                                  const selectedOutCams = areaFaceOutCameras[selectedArea.id] || [];
+                                  const selectedOutCams = tempFaceOut;
                                   const isChecked = selectedOutCams.includes(cam.camera_id);
                                   return (
                                     <div 
                                       key={cam.camera_id}
-                                      onClick={() => toggleFaceOutCamera(selectedArea.id, cam.camera_id)}
+                                      onClick={() => toggleFaceOutCamera(cam.camera_id)}
                                       className="flex items-center justify-between p-2.5 hover:bg-[#20222f] cursor-pointer transition"
                                     >
                                       <div className="flex items-center space-x-2">
@@ -438,40 +509,23 @@ export const AreasPage = () => {
                       <thead>
                         <tr className="bg-[#111218] border-b border-[#21232d] text-slate-400 font-bold">
                           <th className="p-3">Tên thiết bị</th>
-                          <th className="p-3">IP Address</th>
-                          <th className="p-3 text-center">Cổng RTSP</th>
-                          <th className="p-3">Độ phân giải</th>
-                          <th className="p-3 text-center">Trạng thái</th>
                           <th className="p-3 text-center">Hành động</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#1b1c24] font-mono text-slate-300">
                         {selectedArea.cameras.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="p-6 text-center text-slate-500 font-sans italic">
+                            <td colSpan={2} className="p-6 text-center text-slate-500 font-sans italic">
                               Chưa có camera nào kết nối vào khu vực này
                             </td>
                           </tr>
                         ) : (
                           selectedArea.cameras.map(camera => {
-                            const isCamOffline = camera.status === 'offline';
                             const isRemoving = removingBindId === camera.id;
                             return (
                               <tr key={camera.id || camera.camera_id} className="hover:bg-[#181a24] transition">
                                 <td className="p-3 font-sans font-medium text-slate-100">
                                   {camera.camera_name || '/'}
-                                </td>
-                                <td className="p-3 text-slate-400">{camera.ip || '/'}</td>
-                                <td className="p-3 text-center text-slate-400">{camera.port || '/'}</td>
-                                <td className="p-3 text-slate-400">{camera.resolution || '/'}</td>
-                                <td className="p-3 text-center">
-                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-sans font-semibold ${
-                                    isCamOffline 
-                                      ? 'bg-red-500/10 text-red-500 border border-red-500/20' 
-                                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  }`}>
-                                    {camera.status || 'unknown'}
-                                  </span>
                                 </td>
                                 <td className="p-3 text-center">
                                   <button

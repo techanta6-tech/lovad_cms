@@ -23,25 +23,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     
     // Gửi sự kiện chào mừng
     client.emit('connection_status', { status: 'connected', clientId: client.id });
-
-    // Giả lập gửi log chấm công tự động mỗi 10 giây
-    const intervalId = setInterval(() => {
-      if (client.connected) {
-        const mockLog = this.generateMockLog();
-        client.emit('realtime_log', mockLog);
-      } else {
-        clearInterval(intervalId);
-      }
-    }, 10000);
-
-    (client as any).logIntervalId = intervalId;
   }
 
   handleDisconnect(client: Socket) {
     console.log(`Client disconnected: ${client.id}`);
-    if ((client as any).logIntervalId) {
-      clearInterval((client as any).logIntervalId);
-    }
   }
 
   private generateMockLog() {

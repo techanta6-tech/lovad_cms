@@ -7,10 +7,11 @@ import { CameraModule } from './camera/camera.module';
 import { ChannelModule } from './channel/channel.module';
 import { LocationModule } from './location/location.module';
 import { MeetingModule } from './meeting/meeting.module';
+import { MediaController } from './media/media.controller';
 
 @Module({
   imports: [PrismaModule, HumanModule, HumanListModule, CameraModule, ChannelModule, LocationModule, MeetingModule],
-  controllers: [],
+  controllers: [MediaController],
   providers: [EventsGateway],
 })
 export class AppModule {}

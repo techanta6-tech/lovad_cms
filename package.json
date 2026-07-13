@@ -10,6 +10,9 @@
     "dev:backend": "yarn workspace backend start:dev",
     "dev:backend:nogen": "yarn workspace backend start:dev:nogen",
     "build:frontend": "yarn workspace frontend build",
-    "build:backend": "yarn workspace backend build"
+    "build:backend": "yarn workspace backend build",
+    "prisma:studio:lcms": "yarn workspace backend prisma:studio:lcms",
+    "prisma:studio:dvms": "yarn workspace backend prisma:studio:dvms",
+    "prisma:studio:cms": "yarn workspace backend prisma:studio:cms"
   }
 }

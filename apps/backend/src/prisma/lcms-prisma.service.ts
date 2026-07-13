@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client/lcms';
+import { PrismaClient } from '../../generated/lcms';
 
 @Injectable()
 export class LcmsPrismaService extends PrismaClient implements OnModuleInit {

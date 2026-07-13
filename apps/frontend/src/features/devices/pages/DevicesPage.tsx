@@ -110,6 +110,12 @@ export const DevicesPage = () => {
 
   const [channels, setChannels] = useState<Map<string, ChannelInfo>>(buildChannelMap(initialChannels));
   const [originalChannels, setOriginalChannels] = useState<Map<string, ChannelInfo>>(buildChannelMap(initialChannels));
+
+  const connectedChannel = (Array.from(channels.values()) as ChannelInfo[]).find(
+    c => c.cameraMappingId === selectedDeviceId
+  );
+  const channelNameText = connectedChannel ? (connectedChannel as ChannelInfo).name : 'Chưa kết nối';
+
   // Guards against reloading channels (and clobbering unsaved edits) after the
   // first successful fetch, even when the `devices` dependency changes.
   const channelsLoadedRef = useRef(false);
@@ -455,244 +461,31 @@ export const DevicesPage = () => {
                           /* VIEW & UPDATE DEVICE PROFILE FORM */
                           <div className="space-y-5 text-xs text-slate-300">
                             {/* Row 1: Tên Gợi Nhớ */}
-                            <div className="grid grid-cols-12 items-center gap-4">
+                            <div className="grid grid-cols-12 items-center gap-4 opacity-50">
                               <label className="col-span-3 text-right font-medium text-slate-400">Tên Gợi Nhớ</label>
                               <div className="col-span-6">
                                 <input 
                                   type="text"
                                   value={editDevName}
-                                  onChange={(e) => {
-                                    setEditDevName(e.target.value);
-                                    if (e.target.value.trim()) {
-                                      setEditDevErrors(prev => ({ ...prev, name: undefined }));
-                                    }
-                                  }}
-                                  className={`w-full px-3 py-2 bg-[#1b1c24] border ${editDevErrors.name ? 'border-red-500/50 focus:border-red-500' : 'border-[#2d2f3c] focus:border-[#00a2e8]'} rounded text-slate-100 focus:outline-none`}
+                                  disabled
+                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-400 cursor-not-allowed focus:outline-none"
                                 />
                               </div>
-                              <div className="col-span-3 text-red-400 text-[11px] font-medium min-h-[1.5rem] flex items-center">
-                                {editDevErrors.name || (!editDevName.trim() && "Không được để trống nội dung!")}
-                              </div>
+                              <div className="col-span-3"></div>
                             </div>
 
-                            {/* Row 2: Mô Tả */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Mô Tả</label>
+                            {/* Row 2: Kênh Kết Nối */}
+                            <div className="grid grid-cols-12 items-center gap-4 opacity-50">
+                              <label className="col-span-3 text-right font-medium text-slate-400">Kênh Kết Nối</label>
                               <div className="col-span-6">
                                 <input 
                                   type="text"
-                                  value={editDevDesc}
-                                  onChange={(e) => setEditDevDesc(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8]"
+                                  value={channelNameText}
+                                  disabled
+                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-400 cursor-not-allowed focus:outline-none"
                                 />
                               </div>
                               <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 5: Loại Thiết Bị */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Loại Thiết Bị</label>
-                              <div className="col-span-6">
-                                <select 
-                                  value={editDevType}
-                                  onChange={(e) => setEditDevType(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8] cursor-pointer"
-                                >
-                                  <option value="ONVIF CAMERA">ONVIF CAMERA</option>
-                                  <option value="RTSP CAMERA">RTSP STREAM CAMERA</option>
-                                </select>
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 6: Main Stream */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Main Stream</label>
-                              <div className="col-span-6">
-                                <select 
-                                  value={editDevMainStream}
-                                  onChange={(e) => setEditDevMainStream(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8] cursor-pointer"
-                                >
-                                  <option value="H264 1920x1080 (profile_c">H264 1920x1080 (profile_c)</option>
-                                  <option value="H265 2560x1440 (profile_c">H265 2560x1440 (profile_c)</option>
-                                </select>
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 7: Sub Stream */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Sub Stream</label>
-                              <div className="col-span-6">
-                                <select 
-                                  value={editDevSubStream}
-                                  onChange={(e) => setEditDevSubStream(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8] cursor-pointer"
-                                >
-                                  <option value="H264 704x576 (profile_can">H264 704x576 (profile_can)</option>
-                                  <option value="H264 640x480 (profile_can">H264 640x480 (profile_can)</option>
-                                </select>
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 8: Địa Chỉ IP */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Địa Chỉ IP</label>
-                              <div className="col-span-6">
-                                <input 
-                                  type="text"
-                                  value={editDevIp}
-                                  onChange={(e) => {
-                                    setEditDevIp(e.target.value);
-                                    if (e.target.value.trim()) {
-                                      setEditDevErrors(prev => ({ ...prev, ip: undefined }));
-                                    }
-                                  }}
-                                  className={`w-full px-3 py-2 bg-[#1b1c24] border ${editDevErrors.ip ? 'border-red-500/50 focus:border-red-500' : 'border-[#2d2f3c] focus:border-[#00a2e8]'} rounded text-slate-100 focus:outline-none`}
-                                />
-                              </div>
-                              <div className="col-span-3 text-red-400 text-[11px] font-medium min-h-[1.5rem] flex items-center">
-                                {editDevErrors.ip || (!editDevIp.trim() && "Không được để trống nội dung!")}
-                              </div>
-                            </div>
-
-                            {/* Row 9: Cổng ONVIF */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Cổng ONVIF</label>
-                              <div className="col-span-6">
-                                <input 
-                                  type="text"
-                                  value={editDevOnvifPort}
-                                  onChange={(e) => setEditDevOnvifPort(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8]"
-                                />
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 10: Cổng RTSP */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Cổng RTSP</label>
-                              <div className="col-span-6">
-                                <input 
-                                  type="text"
-                                  value={editDevRtspPort}
-                                  onChange={(e) => setEditDevRtspPort(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8]"
-                                />
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 11: Luồng Lưu Trữ */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Luồng Lưu Trữ</label>
-                              <div className="col-span-6">
-                                <select 
-                                  value={editDevStorageStream}
-                                  onChange={(e) => setEditDevStorageStream(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8] cursor-pointer"
-                                >
-                                  <option value="Main Stream">Main Stream</option>
-                                  <option value="Sub Stream">Sub Stream</option>
-                                </select>
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 12: Tên Tài Khoản */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Tên Tài Khoản</label>
-                              <div className="col-span-6">
-                                <input 
-                                  type="text"
-                                  value={editDevUser}
-                                  onChange={(e) => setEditDevUser(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8]"
-                                />
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 13: Mật Khẩu */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Mật Khẩu</label>
-                              <div className="col-span-6">
-                                <input 
-                                  type="password"
-                                  value={editDevPass}
-                                  onChange={(e) => setEditDevPass(e.target.value)}
-                                  className="w-full px-3 py-2 bg-[#1b1c24] border border-[#2d2f3c] rounded text-slate-100 focus:outline-none focus:border-[#00a2e8]"
-                                />
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Row 14: Thông Số Kết Nối RTSP */}
-                            <div className="grid grid-cols-12 items-center gap-4">
-                              <label className="col-span-3 text-right font-medium text-slate-400">Thông Số Kết Nối RTSP</label>
-                              <div className="col-span-6 flex items-center space-x-2">
-                                <button 
-                                  onClick={() => alert(`Kết nối RTSP tới IP ${editDevIp} - Luồng Main Stream`)}
-                                  className="flex-1 py-2 bg-[#00a2e8] hover:bg-[#008cc9] text-white font-semibold rounded text-xs transition"
-                                >
-                                  Main Stream
-                                </button>
-                                <button 
-                                  onClick={() => alert(`Kết nối RTSP tới IP ${editDevIp} - Luồng Sub Stream`)}
-                                  className="flex-1 py-2 bg-[#00a2e8] hover:bg-[#008cc9] text-white font-semibold rounded text-xs transition"
-                                >
-                                  Sub Stream
-                                </button>
-                              </div>
-                              <div className="col-span-3"></div>
-                            </div>
-
-                            {/* Action Button: Cập Nhật Profile */}
-                            <div className="grid grid-cols-12 gap-4 pt-6 border-t border-[#252731] mt-8">
-                              <div className="col-span-3"></div>
-                              <div className="col-span-6">
-                                <button 
-                                  onClick={() => {
-                                    const errors: {name?: string; ip?: string} = {};
-                                    if (!editDevName.trim()) errors.name = "Không được để trống nội dung!";
-                                    if (!editDevIp.trim()) errors.ip = "Không được để trống nội dung!";
-                                    
-                                    if (Object.keys(errors).length > 0) {
-                                      setEditDevErrors(errors);
-                                      return;
-                                    }
-
-                                    const updatedDevices = devices.map(d => {
-                                      if (d.id === selectedDeviceId) {
-                                        return {
-                                          ...d,
-                                          name: editDevName.trim(),
-                                          description: editDevDesc.trim(),
-                                          tag: editDevTag,
-                                          type: editDevType,
-                                          mainStream: editDevMainStream,
-                                          subStream: editDevSubStream,
-                                          ip: editDevIp.trim(),
-                                          onvifPort: editDevOnvifPort,
-                                          rtspPort: editDevRtspPort,
-                                          storageStream: editDevStorageStream,
-                                          username: editDevUser,
-                                          password: editDevPass
-                                        };
-                                      }
-                                      return d;
-                                    });
-                                    setDevices(updatedDevices);
-                                    alert('Cập nhật thông tin camera thành công!');
-                                  }}
-                                  className="px-5 py-2.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white font-bold rounded text-xs transition shadow-lg shadow-[#00a2e8]/25"
-                                >
-                                  Cập Nhật Profile
-                                </button>
-                              </div>
                             </div>
                           </div>
                         )}
@@ -717,53 +510,65 @@ export const DevicesPage = () => {
 
                       {/* Channels scroll list */}
                       <div className="flex-1 overflow-y-auto space-y-2.5 pr-2">
-                        {Array.from<ChannelInfo>(channels.values()).map((chan, index) => (
-                          <div key={chan.id} className="grid grid-cols-12 gap-3 items-center text-xs">
-                            {/* STT Column (display order derived from position) */}
-                            <div className="col-span-1 text-center font-semibold text-slate-300 bg-[#1c1d26] py-2 rounded-md border border-[#2d2f3c]/60 select-none">
-                              {index + 1}
-                            </div>
-                            
-                            {/* Tên Kênh Column */}
-                            <div className="col-span-5">
-                              <input 
-                                type="text"
-                                value={chan.name}
-                                onChange={(e) => {
-                                  const updated = new Map(channels);
-                                  updated.set(chan.id, { ...chan, name: e.target.value });
-                                  setChannels(updated);
-                                }}
-                                className="w-full px-3 py-2 bg-[#1e202b] border border-[#2d2f3c] rounded-md text-slate-200 focus:outline-none focus:border-[#00a2e8] font-medium"
-                              />
-                            </div>
+                        {(() => {
+                          const channelList = Array.from<ChannelInfo>(channels.values());
+                          const maxAssignedIndex = channelList.reduce(
+                            (max, chan, idx) => chan.cameraMappingId ? Math.max(max, idx) : max,
+                            -1
+                          );
+                          const visibleLimit = maxAssignedIndex + 1;
 
-                            {/* Tên Camera Column */}
-                            <div className="col-span-6 relative">
-                              <select 
-                                value={chan.cameraMappingId || ''}
-                                onChange={(e) => {
-                                  const updated = new Map(channels);
-                                  const selectedId = e.target.value;
-                                  const selectedCamera = devices.find(d => d.id === selectedId);
-                                  updated.set(chan.id, {
-                                    ...chan,
-                                    cameraMappingId: selectedId || undefined,
-                                    cameraName: selectedCamera?.name || 'Không Chọn',
-                                  });
-                                  setChannels(updated);
-                                }}
-                                className="w-full px-3 py-2 pr-8 bg-[#1e202b] border border-[#2d2f3c] rounded-md text-slate-200 focus:outline-none focus:border-[#00a2e8] appearance-none cursor-pointer font-medium"
-                              >
-                                <option value="">Không Chọn</option>
-                                {devices.map(d => (
-                                  <option key={d.id} value={d.id}>{d.name}</option>
-                                ))}
-                              </select>
-                              <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
-                            </div>
-                          </div>
-                        ))}
+                          return channelList.map((chan, index) => {
+                            if (index > visibleLimit) return null;
+                            return (
+                              <div key={chan.id} className="grid grid-cols-12 gap-3 items-center text-xs">
+                                {/* STT Column (display order derived from position) */}
+                                <div className="col-span-1 text-center font-semibold text-slate-300 bg-[#1c1d26] py-2 rounded-md border border-[#2d2f3c]/60 select-none">
+                                  {index + 1}
+                                </div>
+                                
+                                {/* Tên Kênh Column */}
+                                <div className="col-span-5">
+                                  <input 
+                                    type="text"
+                                    value={chan.name}
+                                    onChange={(e) => {
+                                      const updated = new Map(channels);
+                                      updated.set(chan.id, { ...chan, name: e.target.value });
+                                      setChannels(updated);
+                                    }}
+                                    className="w-full px-3 py-2 bg-[#1e202b] border border-[#2d2f3c] rounded-md text-slate-200 focus:outline-none focus:border-[#00a2e8] font-medium"
+                                  />
+                                </div>
+
+                                {/* Tên Camera Column */}
+                                <div className="col-span-6 relative">
+                                  <select 
+                                    value={chan.cameraMappingId || ''}
+                                    onChange={(e) => {
+                                      const updated = new Map(channels);
+                                      const selectedId = e.target.value;
+                                      const selectedCamera = devices.find(d => d.id === selectedId);
+                                      updated.set(chan.id, {
+                                        ...chan,
+                                        cameraMappingId: selectedId || undefined,
+                                        cameraName: selectedCamera?.name || 'Không Chọn',
+                                      });
+                                      setChannels(updated);
+                                    }}
+                                    className="w-full px-3 py-2 pr-8 bg-[#1e202b] border border-[#2d2f3c] rounded-md text-slate-200 focus:outline-none focus:border-[#00a2e8] appearance-none cursor-pointer font-medium"
+                                  >
+                                    <option value="">Không Chọn</option>
+                                    {devices.map(d => (
+                                      <option key={d.id} value={d.id}>{d.name}</option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
 
                       {/* Footer Actions */}

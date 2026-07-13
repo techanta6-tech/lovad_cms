@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client/dvms';
+import { PrismaClient } from '../../generated/dvms';
 
 @Injectable()
 export class DvmsPrismaService extends PrismaClient implements OnModuleInit {

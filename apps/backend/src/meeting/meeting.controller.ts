@@ -14,6 +14,11 @@ export class MeetingController {
     return this.meetingService.findAll();
   }
 
+  @Get('event-logs')
+  async getEventLogs() {
+    return this.meetingService.getEventLogs();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.meetingService.findOne(id);

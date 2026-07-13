@@ -77,6 +77,7 @@ interface AppContextType {
   deleteArea: (id: string) => Promise<void>;
   addAreaCamera: (areaId: string, cameraId: string, role?: string[]) => Promise<AreaCamera>;
   removeAreaCamera: (areaId: string, bindId: string) => Promise<void>;
+  updateAreaCamera: (areaId: string, bindId: string, role: string[]) => Promise<AreaCamera>;
   scheduleSavedData: any[];
   setScheduleSavedData: React.Dispatch<React.SetStateAction<any[]>>;
   humanGroups: MeetingGroup[];
@@ -103,6 +104,24 @@ interface AppProviderProps {
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const { socket } = useSocket();
   const [eventLogs, setEventLogs] = useState<EventLog[]>(mockEventLogs);
+
+  // Tải danh sách sự kiện từ cơ sở dữ liệu khi khởi chạy
+  useEffect(() => {
+    const loadEventLogs = async () => {
+      try {
+        const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+        const res = await fetch(`${baseUrl}/meeting/event-logs`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setEventLogs(data);
+        }
+      } catch (e: any) {
+        console.warn('Failed to load event logs from database, using mock logs:', e.message);
+      }
+    };
+    loadEventLogs();
+  }, []);
 
   // Lắng nghe sự kiện WebSocket thời gian thực toàn cục
   useEffect(() => {
@@ -419,6 +438,23 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     return { id: bind.id, camera_id: bind.camera_id, role: bind.role };
   }, [loadLocations]);
 
+  // Update a camera binding's role (location_camera_bind), then re-sync.
+  const updateAreaCamera = useCallback(async (areaId: string, bindId: string, role: string[]): Promise<AreaCamera> => {
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/location/cameras/${bindId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    const bind = await res.json();
+    await loadLocations();
+    return { id: bind.id, camera_id: bind.camera_id, role: bind.role };
+  }, [loadLocations]);
+
   // Remove a camera binding from a location.
   const removeAreaCamera = useCallback(async (areaId: string, bindId: string): Promise<void> => {
     const baseUrl = getBaseUrl();
@@ -565,6 +601,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       deleteArea,
       addAreaCamera,
       removeAreaCamera,
+      updateAreaCamera,
       scheduleSavedData,
       setScheduleSavedData,
       humanGroups,
