@@ -68,7 +68,6 @@ interface AppContextType {
   eventLogs: EventLog[];
   setEventLogs: React.Dispatch<React.SetStateAction<EventLog[]>>;
   isLoadingLogs: boolean;
-  isLoadingLogs: boolean;
   employees: any[];
   setEmployees: React.Dispatch<React.SetStateAction<any[]>>;
   devices: DeviceInfo[];

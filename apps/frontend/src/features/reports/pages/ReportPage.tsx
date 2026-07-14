@@ -25,7 +25,6 @@ import {
   Monitor,
   AlertTriangle,
   CameraOff,
-  CameraOff,
   Download,
   ChevronDown,
   Calendar,
@@ -59,7 +58,7 @@ const parseToLocalTime = (timeCreated?: string): string => {
 };
 
 export const ReportPage = () => {
-  const { eventLogs, meetings, areasData, employees, isLoadingLogs, humanGroups, isLoadingLogs } = useApp();
+  const { eventLogs, meetings, areasData, employees, isLoadingLogs, humanGroups } = useApp();
   const [flashActive, setFlashActive] = useState(false);
 
   const getAreaSuffix = (log: EventLog) => {
@@ -823,32 +822,6 @@ export const ReportPage = () => {
               /* Main Simulated Camera Viewport Container */
               <div className="p-4 space-y-4">
 
-                {/* Simulated Camera Window */}
-                <div className="relative aspect-[4/3] bg-black rounded-lg border border-[#2d2f3e] overflow-hidden group shadow-lg">
-
-                  {/* Selected Person Image */}
-                  <img
-                    src={
-                      selectedThumbIndex === 1
-                        ? resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"
-                        : selectedThumbIndex === 0
-                          ? resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
-                          : (currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
-                    }
-                    alt="Face checkin capture"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-contain opacity-90 transition duration-300"
-                  />
-                  {!currentSelectedEvent ? (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
-                      <CameraOff size={32} className="mx-auto text-slate-600 mb-2" />
-                      <span className="text-xs font-semibold text-slate-400 block mb-1">Không có sự kiện</span>
-                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto">Vui lòng chọn hoặc tải sự kiện để xem chi tiết.</p>
-                    </div>
-                  ) : (
-                    /* Main Simulated Camera Viewport Container */
-                    <div className="p-4 space-y-4">
-
                       {/* Simulated Camera Window */}
                       <div className="relative aspect-[4/3] bg-black rounded-lg border border-[#2d2f3e] overflow-hidden group shadow-lg">
 
@@ -957,7 +930,6 @@ export const ReportPage = () => {
                       {/* Dropdown Camera Select Block (Removed) */}
                     </div>
                   )}
-                    )}
                 </div>
               </div>
             ) : activeTab === 'attendance' ? (
