@@ -8,7 +8,7 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "files": [],
+  "files": ["placeholder.ts"],
   "references": [
     { "path": "./apps/frontend" },
     { "path": "./apps/backend" }

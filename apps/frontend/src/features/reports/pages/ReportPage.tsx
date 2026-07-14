@@ -1158,7 +1158,7 @@ export const ReportPage = () => {
                   {!isMeetingSearched ? (
                     /* Search Form view (Centered, spacious) */
                     <div className="flex-1 flex flex-col items-center py-6 px-4">
-                      <div className="w-full max-w-4xl space-y-6">
+                      <div className="w-full max-w-6xl space-y-6">
                         {/* Top Filters Block */}
                         <div className="grid grid-cols-12 gap-5 w-full bg-[#14151b] border border-[#21232d] p-6 rounded-2xl shadow-2xl relative items-end">
                           
@@ -1166,12 +1166,11 @@ export const ReportPage = () => {
                           <div className="col-span-7 space-y-2 text-left">
                             <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                               <Clock size={14} className="text-[#00a2e8]" />
-                              Thời gian từ Giờ phút ngày tháng năm tới giờ phút ngày tháng năm
+                              Khoảng thời gian tìm kiếm
                             </label>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-[1fr_auto_1fr] gap-1 items-center">
                               {/* Từ */}
                               <div className="space-y-1">
-                                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Từ</span>
                                 <div className="flex gap-2">
                                   <input 
                                     type="time"
@@ -1187,9 +1186,9 @@ export const ReportPage = () => {
                                   />
                                 </div>
                               </div>
+                              <span className='h-fit'> - </span>
                               {/* Đến */}
                               <div className="space-y-1">
-                                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Đến</span>
                                 <div className="flex gap-2">
                                   <input 
                                     type="time"
@@ -1605,8 +1604,10 @@ export const ReportPage = () => {
                                
                                if (checkins.length > 0) {
                                  entryEvent = checkins[0];
-                                 const d = new Date(entryEvent.time_created);
-                                 thoiGianVao = d.toTimeString().split(' ')[0]; // "HH:mm:ss"
+                                 if (entryEvent.time_created) {
+                                   const d = new Date(entryEvent.time_created.replace('Z', ''));
+                                   thoiGianVao = d.toTimeString().split(' ')[0]; // "HH:mm:ss"
+                                 }
                                }
 
                                // Find latest check-out event for this person
@@ -1616,8 +1617,10 @@ export const ReportPage = () => {
                                
                                if (checkouts.length > 0) {
                                  exitEvent = checkouts[0];
-                                 const d = new Date(exitEvent.time_created);
-                                 thoiGianRa = d.toTimeString().split(' ')[0]; // "HH:mm:ss"
+                                 if (exitEvent.time_created) {
+                                   const d = new Date(exitEvent.time_created.replace('Z', ''));
+                                   thoiGianRa = d.toTimeString().split(' ')[0]; // "HH:mm:ss"
+                                 }
                                }
                              } else {
                                // Fallback to mock eventLogs logic

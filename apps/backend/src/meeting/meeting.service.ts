@@ -257,8 +257,6 @@ export class MeetingService {
       const res = new Date(date);
       res.setHours(h, m, 0, 0);
       res.setMinutes(res.getMinutes() + offsetMinutes);
-      // Convert VN local time (UTC+7) → UTC by subtracting 7 hours
-      res.setMinutes(res.getMinutes() - 420);
       return res;
     };
 
