@@ -68,6 +68,7 @@ interface AppContextType {
   eventLogs: EventLog[];
   setEventLogs: React.Dispatch<React.SetStateAction<EventLog[]>>;
   isLoadingLogs: boolean;
+  isLoadingLogs: boolean;
   employees: any[];
   setEmployees: React.Dispatch<React.SetStateAction<any[]>>;
   devices: DeviceInfo[];
@@ -144,7 +145,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const loadData = async () => {
       try {
         const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
-        
+
         // 1. Fetch human-list (Nhóm nhân viên)
         const resList = await fetch(`${baseUrl}/human-list`);
         const lists = await resList.json();
