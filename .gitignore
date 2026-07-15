@@ -12,3 +12,5 @@ coverage/
 /apps/backend/generated
 /apps/frontend/dist-electron
 CMS FaceID Setup 0.0.1.exe/CMS FaceID Setup 0.0.1.exe
+/apps/backend/generated
+.antigravity/55d2ebda-98e9-4222-8c2e-bcc766eb84a6.pbtxt

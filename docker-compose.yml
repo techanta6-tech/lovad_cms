@@ -29,16 +29,10 @@ services:
       - "3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      # Biến cấu hình Database riêng và các Database bên thứ 3 kết nối qua mạng docker hoặc IP Host
-      - CMS_WEBSERVER_DATABASE_URL=postgresql://postgres:your_secure_password@postgres-db:5432/cms_webserver?connect_timeout=15
-      - LCMS_DATABASE_URL=postgresql://postgres:smartdvms@host.docker.internal:5432/lcms_server?connect_timeout=15&pooling=true&minpoolsize=0&maxpoolsize=200
-      - DVMS_DATABASE_URL=postgresql://postgres:smartdvms@host.docker.internal:5432/dvms_server?connect_timeout=15
-      - PORT=3000
-      - IMAGE_LOCAL_PATH=E:\EventData\Images
-      - IMAGE_MOUNT_PATH=/app/event-images
+    env_file:
+      - apps/backend/.env
     volumes:
-      - 'E:\EventData\Images:/app/event-images:ro'
+      - '${HOST_IMAGE_PATH}:/app/event-images:ro'
     depends_on:
       - postgres-db
     restart: always
