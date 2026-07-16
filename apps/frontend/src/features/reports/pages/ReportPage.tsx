@@ -41,7 +41,12 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 // @ts-ignore
 import * as XLSX from 'xlsx-js-style';
+// @ts-ignore
+import { jsPDF } from 'jspdf';
+// @ts-ignore
+import html2canvas from 'html2canvas';
 import { useApp } from '../../../context/AppContext';
+import { getBackendUrl } from '../../../utils/config';
 import { EventLog } from '../../../types';
 
 const resolveImageUrl = (path?: string) => {
@@ -49,7 +54,7 @@ const resolveImageUrl = (path?: string) => {
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
     return path;
   }
-  const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+  const baseUrl = getBackendUrl();
   return `${baseUrl}/media?path=${encodeURIComponent(path)}`;
 };
 
@@ -167,6 +172,7 @@ export const ReportPage = () => {
   const [isPerPageOpen, setIsPerPageOpen] = useState(false);
   const [isEventExportOpen, setIsEventExportOpen] = useState(false);
   const [isMeetingExportOpen, setIsMeetingExportOpen] = useState(false);
+  const [pdfExportRoster, setPdfExportRoster] = useState<any[]>([]);
   const PER_PAGE_OPTIONS = [10, 20, 40, 50, 100];
   const [showAttendanceReportDemo, setShowAttendanceReportDemo] = useState(false);
 
@@ -184,7 +190,7 @@ export const ReportPage = () => {
   const [appliedEndTime, setAppliedEndTime] = useState('');
 
   const buildEventLogsUrl = useCallback((extra: Record<string, string> = {}) => {
-    const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+    const baseUrl = getBackendUrl();
     const params = new URLSearchParams({
       page: String(currentPage),
       limit: String(itemsPerPage),
@@ -437,10 +443,10 @@ export const ReportPage = () => {
         const ratio = Math.max(0, Math.min(100, Math.round((spentSec / meetingDur) * 100)));
         ratioPercent = ratio;
         if (ratio > 95) {
-          evaluationText = `${ratio}%, Hoàn thành tốt`;
+          evaluationText = "Hoàn thành tốt";
           evaluationType = 'good';
         } else {
-          evaluationText = `${ratio}%, Rời phòng sớm`;
+          evaluationText = "Rời phòng sớm";
           evaluationType = 'early';
         }
       }
@@ -577,6 +583,12 @@ export const ReportPage = () => {
     return computedAttendeeRoster.slice(indexFirstMeetingItem, indexLastMeetingItem);
   }, [computedAttendeeRoster, meetingCurrentPage, meetingItemsPerPage]);
 
+  const averageAttendancePercentage = useMemo(() => {
+    if (!computedAttendeeRoster || computedAttendeeRoster.length === 0) return 100;
+    const totalRatioSum = computedAttendeeRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
+    return Math.round(totalRatioSum / computedAttendeeRoster.length);
+  }, [computedAttendeeRoster]);
+
   const [inImageIndex, setInImageIndex] = useState(0);
   const [outImageIndex, setOutImageIndex] = useState(0);
 
@@ -647,7 +659,7 @@ export const ReportPage = () => {
         return;
       }
 
-      const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+      const baseUrl = getBackendUrl();
       // Strip image fields before sending to reduce payload size
       const payload = dataToExport.map(({ stt, vung, camera_id, ten, ma, danhSach, thoiGian, accuracy }) => ({
         stt,
@@ -698,17 +710,22 @@ export const ReportPage = () => {
       'Nhóm': row.emp.danhSach || '',
       'Giờ vào': row.thoiGianVao || '',
       'Giờ ra': row.thoiGianRa || '',
-      'Đánh giá': row.evaluationText || '',
       '% tham dự': row.ratioPercent != null ? `${row.ratioPercent}%` : '',
+      'Đánh giá': row.evaluationText || '',
     }));
 
+    const totalRatioSum = attendeeRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
+    const avgPercent = attendeeRoster.length > 0
+      ? Math.round(totalRatioSum / attendeeRoster.length)
+      : 100;
+
     const infoRows = [
-      ['BÁO CÁO THAM DỰ CUỘC HỌP', ''],
-      ['Tên cuộc họp:', meetingInfo.title || ''],
-      ['Khu vực:', meetingInfo.area || ''],
-      ['Ngày:', meetingInfo.date || ''],
-      ['Giờ bắt đầu:', meetingInfo.startTime || ''],
-      ['Giờ kết thúc:', meetingInfo.endTime || ''],
+      ['BÁO CÁO THAM DỰ CUỘC HỌP', '', '', '', '', '', '', ''],
+      ['Tên cuộc họp:', meetingInfo.title || '', 'Nhóm nhân viên tham gia:', (meetingInfo.departments || []).join(', '), '', '', '', ''],
+      ['Khu vực:', meetingInfo.area || '', 'Đánh giá tổng thể:', `${avgPercent}%`, '', '', '', ''],
+      ['Ngày:', meetingInfo.date || '', '', '', '', '', '', ''],
+      ['Giờ bắt đầu:', meetingInfo.startTime || '', '', '', '', '', '', ''],
+      ['Giờ kết thúc:', meetingInfo.endTime || '', '', '', '', '', '', ''],
       [],
     ];
 
@@ -721,6 +738,7 @@ export const ReportPage = () => {
     const maxColWidths = [];
     for (let R = range.s.r; R <= range.e.r; ++R) {
       for (let C = range.s.c; C <= range.e.c; ++C) {
+        if (R === 0 || ((R === 1 || R === 2) && C >= 3)) continue;
         const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
         if (!infoSheet[cellRef]) continue;
         const val = String(infoSheet[cellRef].v || '');
@@ -741,7 +759,10 @@ export const ReportPage = () => {
 
         // Ensure cells in tables exist to render borders properly
         if (!infoSheet[cellRef]) {
-          if ((R >= 1 && R <= 5 && C <= 1) || (R >= 7 && C <= 7)) {
+          const isMetadataCell = (R >= 1 && R <= 5 && C <= 1) || (R >= 1 && R <= 2 && C >= 2 && C <= 7);
+          const isTableDetailCell = (R >= 7 && C <= 7);
+          
+          if (isMetadataCell || isTableDetailCell) {
             infoSheet[cellRef] = { t: 's', v: '' };
           } else {
             continue;
@@ -758,13 +779,18 @@ export const ReportPage = () => {
           cell.s.alignment = { horizontal: 'center', vertical: 'center' };
         } else if (R >= 1 && R <= 5) {
           // Meeting Info (Header table)
-          cell.s.font = { name: 'Segoe UI', sz: 10, bold: C === 0 };
-          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
-          cell.s.border = {
-            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
-          };
-          if (C === 0) {
-            cell.s.fill = { fgColor: { rgb: 'F3F4F6' } }; // Background for labels
+          const isLabel = C === 0 || (C === 2 && R <= 2);
+          const isValue = C === 1 || (C >= 3 && R <= 2);
+          
+          if (isLabel || isValue) {
+            cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
+            cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            cell.s.border = {
+              top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+            };
+            if (isLabel) {
+              cell.s.fill = { fgColor: { rgb: 'F3F4F6' } }; // Background for labels
+            }
           }
         } else if (R === 7) {
           // Table Headers row
@@ -784,16 +810,18 @@ export const ReportPage = () => {
       }
     }
 
-    // Merge title cells A1:H1
+    // Merge title cells A1:H1 and right side metadata blocks
     infoSheet['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 3 }, e: { r: 1, c: 7 } },
+      { s: { r: 2, c: 3 }, e: { r: 2, c: 7 } },
     ];
 
     // 4. Set heights to act as vertical cell padding
     const rowHeights = [];
     rowHeights[0] = { hpx: 40 }; // Title row height
     for (let i = 1; i <= 5; i++) {
-      rowHeights[i] = { hpx: 22 }; // Metadata table heights
+      rowHeights[i] = { hpx: 22 }; // Meeting info heights
     }
     rowHeights[6] = { hpx: 12 }; // Separator height
     rowHeights[7] = { hpx: 28 }; // Report header height
@@ -807,6 +835,57 @@ export const ReportPage = () => {
     const safeName = (meetingInfo.title || 'CuocHop').replace(/\s+/g, '_');
     const filename = 'BaoCao_' + safeName + '_' + (meetingInfo.date || 'date') + '.xlsx';
     XLSX.writeFile(wb, filename);
+  };
+
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
+
+  const handleExportMeetingReportPDF = async (roster: any[]) => {
+    if (!selectedMeetingReport || !roster || roster.length === 0) return;
+    setIsPdfExporting(true);
+    setPdfExportRoster(roster);
+
+    setTimeout(async () => {
+      const element = document.getElementById('meeting-report-pdf-template');
+      if (!element) {
+        setIsPdfExporting(false);
+        return;
+      }
+
+      try {
+        const canvas = await html2canvas(element, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+        });
+        const imgData = canvas.toDataURL('image/png');
+
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgWidth = 210; // A4 width in mm
+        const pageHeight = 295; // A4 height in mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        const safeName = (selectedMeetingReport.title || 'BaoCaoHop').replace(/\s+/g, '_');
+        pdf.save(`BaoCao_${safeName}_${selectedMeetingReport.date || 'date'}.pdf`);
+      } catch (err) {
+        console.error('Failed to generate PDF:', err);
+        alert('Có lỗi xảy ra khi tạo file PDF.');
+      } finally {
+        setIsPdfExporting(false);
+      }
+    }, 150);
   };
 
   // Trigger Attendance export simulation
@@ -2188,6 +2267,9 @@ export const ReportPage = () => {
                               />
                               <div className="absolute bottom-full right-0 pb-1 z-40 min-w-[170px]">
                                 <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
+                                  <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-[#2d2f3e] text-left">
+                                    Xuất Excel
+                                  </div>
                                   <button
                                     onClick={() => {
                                       handleExportMeetingReportExcel(selectedMeetingReport, computedAttendeeRoster);
@@ -2196,9 +2278,8 @@ export const ReportPage = () => {
                                     className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
                                   >
                                     <Download size={12} />
-                                    <span>Xuất toàn bộ ({computedAttendeeRoster.length})</span>
+                                    <span>Toàn bộ ({computedAttendeeRoster.length})</span>
                                   </button>
-                                  <div className="border-t border-[#2d2f3e]" />
                                   <button
                                     onClick={() => {
                                       handleExportMeetingReportExcel(selectedMeetingReport, currentMeetingRoster);
@@ -2207,7 +2288,33 @@ export const ReportPage = () => {
                                     className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
                                   >
                                     <Download size={12} />
-                                    <span>Xuất trong trang ({currentMeetingRoster.length})</span>
+                                    <span>Trong trang ({currentMeetingRoster.length})</span>
+                                  </button>
+                                  
+                                  <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-y border-[#2d2f3e] text-left">
+                                    Xuất PDF
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      handleExportMeetingReportPDF(computedAttendeeRoster);
+                                      setIsMeetingExportOpen(false);
+                                    }}
+                                    disabled={isPdfExporting}
+                                    className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                  >
+                                    <FileText size={12} />
+                                    <span>Toàn bộ ({computedAttendeeRoster.length})</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      handleExportMeetingReportPDF(currentMeetingRoster);
+                                      setIsMeetingExportOpen(false);
+                                    }}
+                                    disabled={isPdfExporting}
+                                    className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                  >
+                                    <FileText size={12} />
+                                    <span>Trong trang ({currentMeetingRoster.length})</span>
                                   </button>
                                 </div>
                               </div>
@@ -2409,6 +2516,7 @@ export const ReportPage = () => {
                                       <th className="py-2.5 px-3">nhóm nhân viên</th>
                                       <th className="py-2.5 px-3">Thời gian vào phòng</th>
                                       <th className="py-2.5 px-3">Thời gian rời phòng</th>
+                                      <th className="py-2.5 px-3 text-center">% tham dự</th>
                                       <th className="py-2.5 px-4 text-center">Đánh giá</th>
                                     </tr>
                                   </thead>
@@ -2440,6 +2548,9 @@ export const ReportPage = () => {
                                           </td>
                                           <td className={`py-2 px-3 font-mono ${item.entryColorClass}`}>{thoiGianVao || '--:--:--'}</td>
                                           <td className={`py-2 px-3 font-mono ${item.exitColorClass}`}>{thoiGianRa || '--:--:--'}</td>
+                                          <td className="py-2 px-3 text-center font-mono font-semibold text-white">
+                                            {item.ratioPercent}%
+                                          </td>
                                           <td className="py-2 px-4 text-center font-semibold">
                                             <span className={`${item.evaluationColorClass} text-[11px]`}>
                                               {evaluationText}
@@ -2991,6 +3102,89 @@ export const ReportPage = () => {
                 </>
               )}
             </AnimatePresence>
+
+            {/* Hidden Printable PDF Container */}
+            <div
+              id="meeting-report-pdf-template"
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                top: '-9999px',
+                width: '1024px',
+                backgroundColor: '#ffffff',
+                color: '#000000',
+              }}
+            >
+              <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+                <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
+                  BÁO CÁO THAM DỰ CUỘC HỌP
+                </h2>
+                
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tên cuộc họp:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{selectedMeetingReport?.title || ''}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Nhóm nhân viên tham gia:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{(selectedMeetingReport?.departments || []).join(', ')}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Khu vực:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.area || ''}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đánh giá tổng thể:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{`${averageAttendancePercentage}%`}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Ngày:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.date || ''}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderRight: 'none' }}></td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}></td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ bắt đầu:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.startTime || ''}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderRight: 'none' }}></td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}></td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ kết thúc:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.endTime || ''}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderRight: 'none' }}></td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}></td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>STT</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Mã NV</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Họ và tên</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Nhóm</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ vào</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ ra</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>% tham dự</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Đánh giá</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pdfExportRoster.map((row, idx) => (
+                      <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.ma || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.emp.ten || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.danhSach || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.thoiGianVao || '--:--:--'}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.thoiGianRa || '--:--:--'}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{row.ratioPercent != null ? `${row.ratioPercent}%` : ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '600' }}>{row.evaluationText || ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
           );
 };

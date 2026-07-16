@@ -24,6 +24,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '../../../context/AppContext';
 import { DeviceInfo, ChannelInfo } from '../../../types';
+import { getBackendUrl } from '../../../utils/config';
 
 // Map a channel_cfg row from the DVMS DB to the UI ChannelInfo shape.
 // Fields that are missing or empty are skipped: an empty name stays '',
@@ -153,7 +154,7 @@ export const DevicesPage = () => {
   useEffect(() => {
     if (channelsLoadedRef.current || devices.length === 0) return;
     const loadChannels = async () => {
-      const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+      const baseUrl = getBackendUrl();
       const fullUrl = `${baseUrl}/channel`;
       console.log(`[DEBUG Frontend DevicesPage] Bắt đầu tải danh sách kênh (loadChannels) từ URL: ${fullUrl}`);
       try {

@@ -15,6 +15,7 @@ import {
 import { motion } from 'motion/react';
 import { useApp } from '../../../context/AppContext';
 import { getAvatarUrl } from '../../../utils/avatar';
+import { getBackendUrl } from '../../../utils/config';
 
 // 3. EMPLOYEES PAGE COMPONENT
 // ==========================================
@@ -35,7 +36,7 @@ export const EmployeesPage = () => {
 
   const fetchGroups = async () => {
     setIsRefreshingGroups(true);
-    const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+    const baseUrl = getBackendUrl();
     const fullUrl = `${baseUrl}/human-list`;
     console.log(`[DEBUG Frontend EmployeesPage] Bắt đầu tải nhóm (fetchGroups) từ URL: ${fullUrl}`);
     try {
@@ -59,7 +60,7 @@ export const EmployeesPage = () => {
 
   const fetchEmployees = async () => {
     setIsRefreshingEmployees(true);
-    const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+    const baseUrl = getBackendUrl();
     console.log(`[DEBUG Frontend EmployeesPage] Bắt đầu tải danh sách nhân viên (fetchEmployees)...`);
     try {
       const resList = await fetch(`${baseUrl}/human-list`);

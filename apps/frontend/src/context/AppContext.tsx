@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { EventLog, Area, AreaCamera, DeviceInfo, Meeting, MeetingGroup, CreateMeetingPayload, UpdateMeetingPayload } from '../types';
 import { mockEventLogs, mockAreas } from '../data';
 import { useSocket } from './SocketContext';
+import { getBackendUrl } from '../utils/config';
 
 // Map a camera_cfg row from the DVMS DB to the UI DeviceInfo shape.
 // Fields that are missing or have no content in the DB are skipped
@@ -144,7 +145,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const loadData = async () => {
       console.log(`[DEBUG Frontend AppContext] Bắt đầu tải dữ liệu khởi tạo (loadData)...`);
       try {
-        const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+        const baseUrl = getBackendUrl();
 
         // 1. Fetch human-list (Nhóm nhân viên)
         const resList = await fetch(`${baseUrl}/human-list`);
@@ -318,7 +319,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const loadDevices = async () => {
       console.log(`[DEBUG Frontend AppContext] Bắt đầu tải danh sách thiết bị (loadDevices)...`);
       try {
-        const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+        const baseUrl = getBackendUrl();
         const res = await fetch(`${baseUrl}/camera`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const rows = await res.json();
@@ -334,7 +335,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   }, []);
 
   const [areasData, setAreasData] = useState<Area[]>(mockAreas);
-  const getBaseUrl = () => (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+  const getBaseUrl = () => getBackendUrl();
 
   // Load locations (location + location_camera_bind from webserver DB) and enrich
   // with camera details from the DVMS camera API. Reusable so CRUD actions can

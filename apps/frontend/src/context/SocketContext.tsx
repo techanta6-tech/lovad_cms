@@ -13,6 +13,8 @@ const SocketContext = createContext<SocketContextType>({
 
 export const useSocket = () => useContext(SocketContext);
 
+import { getBackendUrl } from '../utils/config';
+
 interface SocketProviderProps {
   children: ReactNode;
 }
@@ -22,7 +24,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const wsUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
+    const wsUrl = getBackendUrl();
     console.log(`Connecting to WebSocket Server at: ${wsUrl}`);
 
     const socketInstance = io(wsUrl, {
