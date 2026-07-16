@@ -27,6 +27,7 @@ export class MeetingController {
     @Query('endTime')   endTime?:   string,
     @Query('group')     group?:     string,
     @Query('eventType') eventType?: string,
+    @Query('noImages')  noImages?:  string,
   ) {
     return this.meetingService.getEventLogs({
       page:      page      ? parseInt(page,  10) : 1,
@@ -39,6 +40,7 @@ export class MeetingController {
       endTime,
       group,
       eventType,
+      noImages:  noImages === 'true',
     });
   }
 
