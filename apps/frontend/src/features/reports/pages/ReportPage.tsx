@@ -564,6 +564,17 @@ export const ReportPage = () => {
     eventLogs,
     meetingDate
   ]);
+
+  const currentMeetingRoster = useMemo(() => {
+    if (!computedAttendeeRoster || computedAttendeeRoster.length === 0) return [];
+    const totalMeetingItems = computedAttendeeRoster.length;
+    const totalMeetingPages = Math.ceil(totalMeetingItems / meetingItemsPerPage) || 1;
+    const activeMeetingPage = Math.min(meetingCurrentPage, totalMeetingPages);
+    const indexLastMeetingItem = activeMeetingPage * meetingItemsPerPage;
+    const indexFirstMeetingItem = indexLastMeetingItem - meetingItemsPerPage;
+    return computedAttendeeRoster.slice(indexFirstMeetingItem, indexLastMeetingItem);
+  }, [computedAttendeeRoster, meetingCurrentPage, meetingItemsPerPage]);
+
   const [inImageIndex, setInImageIndex] = useState(0);
   const [outImageIndex, setOutImageIndex] = useState(0);
 
@@ -2150,15 +2161,39 @@ export const ReportPage = () => {
                             className="bg-[#181921] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white w-44 focus:outline-none transition-all"
                           />
                         </div>
-                        <button
-                          onClick={() => {
-                            handleExportMeetingReportExcel(selectedMeetingReport, computedAttendeeRoster);
-                          }}
-                          className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-lg text-xs font-semibold transition shadow-md shadow-[#00a2e8]/10"
-                        >
-                          <Download size={13} />
-                          <span>Xuất báo cáo</span>
-                        </button>
+                        <div className="relative group">
+                          {/* Dropup menu - visible on hover */}
+                          <div className="absolute bottom-full right-0 pb-1 hidden group-hover:flex flex-col items-stretch z-20 min-w-[170px]">
+                            <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
+                              <button
+                                onClick={() => {
+                                  handleExportMeetingReportExcel(selectedMeetingReport, computedAttendeeRoster);
+                                }}
+                                className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
+                              >
+                                <Download size={12} />
+                                <span>Xuất toàn bộ ({computedAttendeeRoster.length})</span>
+                              </button>
+                              <div className="border-t border-[#2d2f3e]" />
+                              <button
+                                onClick={() => {
+                                  handleExportMeetingReportExcel(selectedMeetingReport, currentMeetingRoster);
+                                }}
+                                className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
+                              >
+                                <Download size={12} />
+                                <span>Xuất trong trang ({currentMeetingRoster.length})</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <button
+                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-lg text-xs font-semibold transition shadow-md shadow-[#00a2e8]/10"
+                          >
+                            <Download size={13} />
+                            <span>Xuất báo cáo</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -2274,7 +2309,7 @@ export const ReportPage = () => {
                         ? Math.round(totalRatioSum / totalRosterCount)
                         : 100;
 
-                      // Meeting pagination calculation
+                      // Meeting pagination calculation (shared from outer scope)
                       const totalMeetingItems = sortedAttendeeRoster.length;
                       const totalMeetingPages = Math.ceil(totalMeetingItems / meetingItemsPerPage) || 1;
 
@@ -2283,7 +2318,6 @@ export const ReportPage = () => {
 
                       const indexLastMeetingItem = activeMeetingPage * meetingItemsPerPage;
                       const indexFirstMeetingItem = indexLastMeetingItem - meetingItemsPerPage;
-                      const currentMeetingRoster = sortedAttendeeRoster.slice(indexFirstMeetingItem, indexLastMeetingItem);
 
                       return (
                         <>
