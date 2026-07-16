@@ -831,7 +831,7 @@ export const ReportPage = () => {
                 color = '94A3B8'; // Gray
               } else {
                 const inSec = timeStringToSeconds(rowData.thoiGianVao);
-                const startSec = timeStringToSeconds(meetingStartTime);
+                const startSec = timeStringToSeconds(meetingInfo.startTime);
                 const latenessSec = inSec - startSec;
                 if (latenessSec > 0) {
                   if (latenessSec <= 900) {
@@ -849,7 +849,7 @@ export const ReportPage = () => {
                 color = '94A3B8'; // Gray
               } else {
                 const outSec = timeStringToSeconds(rowData.thoiGianRa);
-                const endSec = timeStringToSeconds(meetingEndTime);
+                const endSec = timeStringToSeconds(meetingInfo.endTime);
                 const earlinessSec = endSec - outSec;
                 if (earlinessSec > 0) {
                   if (earlinessSec <= 900) {
