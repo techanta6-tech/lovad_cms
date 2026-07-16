@@ -342,6 +342,9 @@ export const ReportPage = () => {
   const [isLoadingAllMeetingsAttendance, setIsLoadingAllMeetingsAttendance] = useState(false);
   const [selectedEmpStats, setSelectedEmpStats] = useState<any | null>(null);
   const [selectedEmpMeetingDetail, setSelectedEmpMeetingDetail] = useState<any | null>(null);
+  // Multiselect (nhấn giữ) cho danh sách "Báo cáo theo nhân viên" - tương tự Danh sách cuộc họp
+  const [isEmpMultiSelectMode, setIsEmpMultiSelectMode] = useState<boolean>(false);
+  const [selectedEmpReportIds, setSelectedEmpReportIds] = useState<any[]>([]);
 
   const filteredMeetingsMemo = useMemo(() => {
     const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
@@ -1735,6 +1738,228 @@ export const ReportPage = () => {
     const safeName = (meetingInfo.title || 'CuocHop').replace(/\s+/g, '_');
     const filename = 'BaoCao_' + safeName + '_' + (meetingInfo.date || 'date') + '.xlsx';
     XLSX.writeFile(wb, filename);
+  };
+
+  // Tính trạng thái tham dự (text + màu) cho 1 dòng lịch sử họp của nhân viên.
+  // Dùng chung cho cả bảng hiển thị UI và cell coloring khi xuất Excel.
+  const getEmpMeetingRowStatus = (det: any): { text: string; color: string } => {
+    let statusText = 'Vắng';
+    let color = 'DC2626'; // rose
+    if (det.thoiGianVao && det.thoiGianRa) {
+      const getSec = (t: string) => t.split(':').map(Number).reduce((acc: number, v: number) => acc * 60 + v, 0);
+      const inSec = getSec(det.thoiGianVao);
+      const startSec = getSec(det.startTime);
+      const outSec = getSec(det.thoiGianRa);
+      const endSec = getSec(det.endTime);
+      if (inSec <= startSec) {
+        statusText = 'Đúng giờ';
+        color = '059669'; // emerald
+      } else {
+        statusText = 'Đi muộn';
+        color = 'D97706'; // amber
+      }
+      if (outSec < endSec) {
+        statusText += ' - Về sớm';
+        color = 'DC2626'; // rose
+      }
+    } else if (det.thoiGianVao || det.thoiGianRa) {
+      statusText = 'Cần xử lý';
+      color = 'D97706'; // amber
+    }
+    return { text: statusText, color };
+  };
+
+  // Xây 1 worksheet "Lịch sử họp" cho 1 nhân viên (dùng chung cho export đơn và export nhiều nhân viên).
+  const buildEmpMeetingHistorySheet = (empStats: any) => {
+    const emp = empStats.emp;
+    const details = empStats.details || [];
+
+    const formatDate = (dateStr: string) => {
+      const parts = (dateStr || '').split('-');
+      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : (dateStr || '');
+    };
+
+    const rows = details.map((det: any, idx: number) => ({
+      'STT': idx + 1,
+      'Tên cuộc họp': det.title || '',
+      'Ngày': formatDate(det.date),
+      'Thời gian họp': `${det.startTime || ''} - ${det.endTime || ''}`,
+      'Vào': det.thoiGianVao || '',
+      'Ra': det.thoiGianRa || '',
+      'Đánh giá': getEmpMeetingRowStatus(det).text,
+    }));
+
+    const infoRows = [
+      ['LỊCH SỬ THAM DỰ HỌP CỦA NHÂN VIÊN', '', '', '', '', '', ''],
+      ['Họ và tên:', emp.hoTen || '', '', '', '', '', ''],
+      ['Mã NV:', emp.maGiayTo || '', 'Nhóm nhân viên:', (emp.human_group || []).join(', '), '', '', ''],
+      ['Số cuộc họp yêu cầu:', String(empStats.requiredCount ?? ''), 'Đúng giờ / Đi muộn / Về sớm:', `${empStats.presentOnTimeCount ?? 0} / ${empStats.lateCount ?? 0} / ${empStats.earlyCount ?? 0}`, '', '', ''],
+      [],
+    ];
+
+    const sheet = XLSX.utils.aoa_to_sheet(infoRows);
+    XLSX.utils.sheet_add_json(sheet, rows, { origin: 'A' + (infoRows.length + 1), skipHeader: false });
+
+    // Auto-fit column widths
+    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1:G100');
+    const maxColWidths: number[] = [];
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        if (R === 0 || ((R === 2 || R === 3) && C >= 2)) continue;
+        const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+        if (!sheet[cellRef]) continue;
+        const val = String(sheet[cellRef].v || '');
+        const len = val.length;
+        if (!maxColWidths[C] || len > maxColWidths[C]) {
+          maxColWidths[C] = len;
+        }
+      }
+    }
+    sheet['!cols'] = maxColWidths.map(w => ({ wch: Math.max(w + 3, 10) }));
+
+    // Styling
+    const thinBorder = { style: 'thin', color: { rgb: 'D1D5DB' } };
+    const headerRowIdx = infoRows.length; // Row (0-based) của header bảng chi tiết
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+
+        if (!sheet[cellRef]) {
+          const isMetadataCell = (R >= 1 && R <= 3 && C <= 1) || (R >= 2 && R <= 3 && C >= 2 && C <= 6);
+          const isTableDetailCell = R >= headerRowIdx && C <= 6;
+          if (isMetadataCell || isTableDetailCell) {
+            sheet[cellRef] = { t: 's', v: '' };
+          } else {
+            continue;
+          }
+        }
+
+        const cell = sheet[cellRef];
+        cell.s = cell.s || {};
+        cell.s.font = { name: 'Segoe UI', sz: 10 };
+
+        if (R === 0) {
+          // Title row
+          cell.s.font = { name: 'Segoe UI', sz: 14, bold: true, color: { rgb: '0078D7' } };
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+        } else if (R >= 1 && R <= 3) {
+          // Employee info block
+          const isLabel = C === 0 || (C === 2 && R >= 2);
+          const isValue = C === 1 || (C >= 3 && R >= 2);
+          if (isLabel || isValue) {
+            cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
+            cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            cell.s.border = {
+              top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+            };
+            if (isLabel) {
+              cell.s.fill = { fgColor: { rgb: 'F3F4F6' } };
+            }
+          }
+        } else if (R === headerRowIdx) {
+          // Table header row
+          cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } };
+          cell.s.fill = { fgColor: { rgb: '0078D7' } };
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+        } else if (R > headerRowIdx) {
+          // Table data rows
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+
+          const rowDet = details[R - headerRowIdx - 1];
+          if (rowDet) {
+            let color = '000000';
+            if (C === 4) {
+              // Vào
+              color = rowDet.thoiGianVao ? '000000' : '94A3B8';
+            } else if (C === 5) {
+              // Ra
+              color = rowDet.thoiGianRa ? '000000' : '94A3B8';
+            } else if (C === 6) {
+              // Đánh giá
+              color = getEmpMeetingRowStatus(rowDet).color;
+            }
+            cell.s.font = { name: 'Segoe UI', sz: 10, color: { rgb: color } };
+          }
+        }
+      }
+    }
+
+    sheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 2, c: 3 }, e: { r: 2, c: 6 } }, // Nhóm nhân viên
+      { s: { r: 3, c: 3 }, e: { r: 3, c: 6 } }, // Đúng giờ / Đi muộn / Về sớm
+    ];
+
+    const rowHeights: any[] = [];
+    rowHeights[0] = { hpx: 40 };
+    for (let i = 1; i <= 3; i++) rowHeights[i] = { hpx: 22 };
+    rowHeights[4] = { hpx: 12 };
+    rowHeights[headerRowIdx] = { hpx: 28 };
+    for (let i = headerRowIdx + 1; i <= range.e.r; i++) rowHeights[i] = { hpx: 24 };
+    sheet['!rows'] = rowHeights;
+
+    return sheet;
+  };
+
+  // Xuất Excel lịch sử tham dự họp của 1 nhân viên (dùng ở Sub-view Chi tiết).
+  const handleExportEmployeeDetailExcel = (empStats: any) => {
+    if (!empStats || !empStats.details || empStats.details.length === 0) return;
+
+    const wb = XLSX.utils.book_new();
+    const sheet = buildEmpMeetingHistorySheet(empStats);
+    XLSX.utils.book_append_sheet(wb, sheet, 'LichSuHop');
+
+    const safeName = (empStats.emp.hoTen || 'NhanVien').replace(/\s+/g, '_');
+    const filename = 'LichSuHop_' + safeName + '.xlsx';
+    XLSX.writeFile(wb, filename);
+  };
+
+  // Xuất Excel cho nhiều nhân viên đã chọn ở Danh sách "Báo cáo theo nhân viên" (mỗi nhân viên 1 sheet).
+  const handleExportMultipleEmployeesExcel = (selectedIds: any[]) => {
+    if (!selectedIds || selectedIds.length === 0) return;
+
+    setExporting(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const usedNames = new Set<string>();
+
+      selectedIds.forEach((empId, idx) => {
+        const empStats = employeeMeetingStats.find((item: any) => item.emp.id === empId);
+        if (!empStats) return;
+
+        const sheet = buildEmpMeetingHistorySheet(empStats);
+
+        let safeSheetName = (empStats.emp.hoTen || `NhanVien${idx + 1}`).replace(/[\\/?*\[\]]/g, '').substring(0, 28);
+        if (!safeSheetName) safeSheetName = `Sheet ${idx + 1}`;
+        let finalName = safeSheetName;
+        let suffix = 1;
+        while (usedNames.has(finalName)) {
+          finalName = `${safeSheetName}_${++suffix}`.substring(0, 31);
+        }
+        usedNames.add(finalName);
+
+        XLSX.utils.book_append_sheet(wb, sheet, finalName);
+      });
+
+      XLSX.writeFile(wb, 'BaoCao_NhanVien_ThamDuHop_LCMS.xlsx');
+
+      setIsEmpMultiSelectMode(false);
+      setSelectedEmpReportIds([]);
+      setShowExportToast(true);
+      setTimeout(() => setShowExportToast(false), 4000);
+    } catch (e: any) {
+      console.error('Export failed:', e.message);
+      alert('Xuất Excel thất bại: ' + e.message);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const [isPdfExporting, setIsPdfExporting] = useState(false);
@@ -4110,9 +4335,33 @@ export const ReportPage = () => {
                       ) : (
                         <span className="text-[10px] text-slate-400 font-medium">💡 Nhấn giữ để chọn nhiều, click vào cuộc họp để xem chi tiết</span>
                       )
-                    ) : (
-                      <span className="text-[10px] text-slate-400 font-medium">💡 Click vào nhân viên để xem chi tiết tham dự từng lần họp</span>
-                    )}
+                    ) : !selectedEmpStats ? (
+                      isEmpMultiSelectMode ? (
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEmpMultiSelectMode(false);
+                              setSelectedEmpReportIds([]);
+                            }}
+                            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 rounded text-[11px] font-bold uppercase transition duration-150 cursor-pointer focus:outline-none"
+                          >
+                            Hủy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleExportMultipleEmployeesExcel(selectedEmpReportIds)}
+                            disabled={selectedEmpReportIds.length === 0}
+                            className="px-3 py-1 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded text-[11px] font-bold uppercase transition duration-150 cursor-pointer disabled:opacity-50 flex items-center space-x-1.5 focus:outline-none"
+                          >
+                            <Download size={11} />
+                            <span>Xuất Excel ({selectedEmpReportIds.length}) nhân viên</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium">💡 Nhấn giữ để chọn nhiều, click vào nhân viên để xem chi tiết tham dự từng lần họp</span>
+                      )
+                    ) : null}
                   </div>
 
                   {meetingSubTab === 'meetings' ? (
@@ -4248,24 +4497,35 @@ export const ReportPage = () => {
                     selectedEmpStats ? (
                       /* Sub-view: Chi tiết lịch sử tham gia họp của 1 nhân viên */
                       <div className="space-y-4">
-                        <div className="flex items-center space-x-3 mb-2">
+                        <div className="flex items-center justify-between space-x-3 mb-2">
+                          <div className="flex items-center space-x-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmpStats(null);
+                                setSelectedEmpMeetingDetail(null);
+                              }}
+                              className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#2d2f3c] hover:border-slate-400 bg-[#1c1d26] hover:bg-[#20212a] text-slate-300 hover:text-white transition cursor-pointer focus:outline-none"
+                              title="Quay lại danh sách nhân viên"
+                            >
+                              <ArrowLeft size={14} />
+                            </button>
+                            <div className="text-left">
+                              <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                                Lịch sử họp: {selectedEmpStats.emp.hoTen}
+                              </h4>
+                              <p className="text-[10px] text-slate-400">Mã NV: {selectedEmpStats.emp.maGiayTo} | {selectedEmpStats.emp.human_group.join(', ')}</p>
+                            </div>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              setSelectedEmpStats(null);
-                              setSelectedEmpMeetingDetail(null);
-                            }}
-                            className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#2d2f3c] hover:border-slate-400 bg-[#1c1d26] hover:bg-[#20212a] text-slate-300 hover:text-white transition cursor-pointer focus:outline-none"
-                            title="Quay lại danh sách nhân viên"
+                            onClick={() => handleExportEmployeeDetailExcel(selectedEmpStats)}
+                            disabled={!selectedEmpStats.details || selectedEmpStats.details.length === 0}
+                            className="px-3 py-1.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-lg text-[11px] font-bold uppercase transition duration-150 cursor-pointer disabled:opacity-50 flex items-center space-x-1.5 shrink-0 focus:outline-none"
                           >
-                            <ArrowLeft size={14} />
+                            <Download size={12} />
+                            <span>Xuất Excel</span>
                           </button>
-                          <div className="text-left">
-                            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                              Lịch sử họp: {selectedEmpStats.emp.hoTen}
-                            </h4>
-                            <p className="text-[10px] text-slate-400">Mã NV: {selectedEmpStats.emp.maGiayTo} | {selectedEmpStats.emp.human_group.join(', ')}</p>
-                          </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-left">
@@ -4460,6 +4720,7 @@ export const ReportPage = () => {
                             <table className="w-full text-left border-collapse">
                               <thead>
                                 <tr className="bg-[#111218] border-b border-[#2d2f3c] text-[10px] text-slate-400 font-bold uppercase tracking-wider select-none">
+                                  {isEmpMultiSelectMode && <th className="py-3 px-4 w-8"></th>}
                                   <th className="py-3 px-4 text-center">STT</th>
                                   <th className="py-3 px-4">Mã NV</th>
                                   <th className="py-3 px-4">Họ và tên</th>
@@ -4470,24 +4731,84 @@ export const ReportPage = () => {
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-[#1b1c24] text-xs font-mono select-none">
-                                {employeeMeetingStats.map((item, idx) => (
+                                {employeeMeetingStats.map((item, idx) => {
+                                  const isSelected = selectedEmpReportIds.includes(item.emp.id);
+                                  return (
                                   <tr
                                     key={item.emp.id}
-                                    onClick={() => {
-                                      setSelectedEmpStats(item);
-                                      setSelectedEmpMeetingDetail(item.details[0] || null);
+                                    onMouseDown={() => {
+                                      if (!isEmpMultiSelectMode) {
+                                        longPressTimerRef.current = setTimeout(() => {
+                                          setIsEmpMultiSelectMode(true);
+                                          setSelectedEmpReportIds([item.emp.id]);
+                                        }, 600);
+                                      }
                                     }}
-                                    className="cursor-pointer transition-colors hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300"
+                                    onMouseUp={() => {
+                                      if (longPressTimerRef.current) {
+                                        clearTimeout(longPressTimerRef.current);
+                                        longPressTimerRef.current = null;
+                                      }
+                                    }}
+                                    onMouseLeave={() => {
+                                      if (longPressTimerRef.current) {
+                                        clearTimeout(longPressTimerRef.current);
+                                        longPressTimerRef.current = null;
+                                      }
+                                    }}
+                                    onTouchStart={() => {
+                                      if (!isEmpMultiSelectMode) {
+                                        longPressTimerRef.current = setTimeout(() => {
+                                          setIsEmpMultiSelectMode(true);
+                                          setSelectedEmpReportIds([item.emp.id]);
+                                        }, 600);
+                                      }
+                                    }}
+                                    onTouchEnd={() => {
+                                      if (longPressTimerRef.current) {
+                                        clearTimeout(longPressTimerRef.current);
+                                        longPressTimerRef.current = null;
+                                      }
+                                    }}
+                                    onClick={() => {
+                                      if (isEmpMultiSelectMode) {
+                                        setSelectedEmpReportIds(prev => {
+                                          if (prev.includes(item.emp.id)) {
+                                            return prev.filter(id => id !== item.emp.id);
+                                          } else {
+                                            return [...prev, item.emp.id];
+                                          }
+                                        });
+                                      } else {
+                                        setSelectedEmpStats(item);
+                                        setSelectedEmpMeetingDetail(item.details[0] || null);
+                                      }
+                                    }}
+                                    className={`cursor-pointer transition-colors hover:bg-[#181921]/60 text-slate-300 ${
+                                      isSelected ? 'bg-[#00a2e8]/10' : 'odd:bg-[#0e0f14] even:bg-[#101117]'
+                                    }`}
                                   >
+                                    {isEmpMultiSelectMode && (
+                                      <td className="py-3 px-4">
+                                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${
+                                          isSelected
+                                            ? 'border-[#00a2e8] bg-[#00a2e8]'
+                                            : 'border-[#2d2f3c] bg-[#111218]'
+                                        }`}>
+                                          {isSelected && <Check size={8} className="text-white font-bold" />}
+                                        </div>
+                                      </td>
+                                    )}
                                     <td className="py-3 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
-                                    <td className="py-3 px-4 text-amber-500 font-bold">{item.emp.maGiayTo}</td>
+                                    <td className="py-3 px-4 font-bold">{item.emp.maGiayTo}</td>
                                     <td className="py-3 px-4 font-sans font-medium text-slate-100">{item.emp.hoTen}</td>
                                     <td className="py-3 px-4 text-center text-slate-400 font-bold">{item.requiredCount}</td>
                                     <td className="py-3 px-4 text-center text-emerald-400 font-bold">{item.presentOnTimeCount}</td>
                                     <td className="py-3 px-4 text-center text-amber-500 font-bold">{item.lateCount}</td>
                                     <td className="py-3 px-4 text-center text-rose-400 font-bold">{item.earlyCount}</td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
