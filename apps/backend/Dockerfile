@@ -42,6 +42,7 @@ COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 # Copy generated Prisma clients and schemas
 COPY --from=builder /app/apps/backend/generated ./apps/backend/generated
 COPY --from=builder /app/apps/backend/prisma ./apps/backend/prisma
+COPY --from=builder /app/apps/backend/run-prisma.js ./apps/backend/run-prisma.js
 
 # Expose backend port
 EXPOSE 3000
