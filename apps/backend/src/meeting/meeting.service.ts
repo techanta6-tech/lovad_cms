@@ -539,11 +539,12 @@ export class MeetingService {
     page?: number; limit?: number; search?: string; zone?: string;
     startDate?: string; endDate?: string; startTime?: string; endTime?: string;
     group?: string; eventType?: string;
+    noImages?: boolean;
   } = {}) {
     console.log(`[DEBUG Backend] Bắt đầu truy vấn getEventLogs với các tham số:`, opts);
     const page   = Math.max(1, opts.page   || 1);
-    const limit  = Math.min(500, Math.max(1, opts.limit || 10));
-    const offset = (page - 1) * limit;
+    const limit  = opts.limit === -1 ? 1000000 : Math.min(500, Math.max(1, opts.limit || 10));
+    const offset = opts.limit === -1 ? 0 : (page - 1) * limit;
 
     const { listMap, locationNameByCameraId } = await this.buildLookupMaps();
 
@@ -576,21 +577,21 @@ export class MeetingService {
           ev.create_time AS time_created,
           h.full_name,
           h.document_id,
-          h.cropped_face_images,
           h.list_ids,
           ca.camera_friendly_name AS camera_name,
-          ca.area_name,
-          ei_full.image_path AS full_image_path,
-          ei_face.image_path AS face_image_path
+          ca.area_name
+          ${opts.noImages ? '' : `, h.cropped_face_images, ei_full.image_path AS full_image_path, ei_face.image_path AS face_image_path`}
       FROM event_vms_parent ev
       INNER JOIN event_statistic_parent es ON ev.source_id = es.id
       INNER JOIN human_info h             ON es.object_id = h.id
       LEFT  JOIN camera_area_event_source ca ON es.source_id = ca.area_id
+      ${opts.noImages ? '' : `
       LEFT  JOIN event_image_parent ei_full  ON ev.source_id = ei_full.statistic_id AND ei_full.type = 1
       LEFT  JOIN event_image_parent ei_face  ON ev.source_id = ei_face.statistic_id AND ei_face.type = 4
+      `}
       WHERE ${where}
       ORDER BY ev.create_time DESC
-      LIMIT ${limit} OFFSET ${offset};
+      ${opts.limit === -1 ? '' : `LIMIT ${limit} OFFSET ${offset}`};
     `;
 
     try {

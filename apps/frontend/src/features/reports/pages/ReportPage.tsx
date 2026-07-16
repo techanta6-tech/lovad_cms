@@ -39,7 +39,8 @@ import {
   Video
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import * as XLSX from 'xlsx';
+// @ts-ignore
+import * as XLSX from 'xlsx-js-style';
 import { useApp } from '../../../context/AppContext';
 import { EventLog } from '../../../types';
 
@@ -613,13 +614,29 @@ export const ReportPage = () => {
   };
 
   // Export event list to Excel via backend API
-  const handleExportExcelData = async (rows: typeof filteredLogs) => {
-    if (rows.length === 0) return;
+  const handleExportExcelData = async (rows: typeof filteredLogs, isAll: boolean = false) => {
     setExporting(true);
     try {
+      let dataToExport = rows;
+      if (isAll) {
+        // Fetch all matching data without page/limit constraints and without images
+        const { baseUrl, params } = buildEventLogsUrl({ limit: '-1', noImages: 'true' });
+        const res = await fetch(`${baseUrl}/meeting/event-logs?${params.toString()}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json && Array.isArray(json.data)) {
+          dataToExport = json.data;
+        }
+      }
+
+      if (dataToExport.length === 0) {
+        alert("Không có dữ liệu để xuất!");
+        return;
+      }
+
       const baseUrl = (import.meta as any).env.VITE_WS_URL || 'http://localhost:3001';
       // Strip image fields before sending to reduce payload size
-      const payload = rows.map(({ stt, vung, camera_id, ten, ma, danhSach, thoiGian, accuracy }) => ({
+      const payload = dataToExport.map(({ stt, vung, camera_id, ten, ma, danhSach, thoiGian, accuracy }) => ({
         stt,
         vung: `${vung} (${getAreaSuffix({ stt, vung, camera_id, ten, ma, danhSach, thoiGian, avatarSeed: '' })})`,
         ten,
@@ -647,6 +664,7 @@ export const ReportPage = () => {
       setTimeout(() => setShowExportToast(false), 4000);
     } catch (e: any) {
       console.error('Export failed:', e.message);
+      alert('Xuất Excel thất bại: ' + e.message);
     } finally {
       setExporting(false);
     }
@@ -659,30 +677,118 @@ export const ReportPage = () => {
   ) => {
     if (!meetingInfo || !attendeeRoster || attendeeRoster.length === 0) return;
 
+    // 1. Map data rows with Vietnamese headers and % suffix
     const rows = attendeeRoster.map((row, idx) => ({
       'STT': idx + 1,
-      'Ma NV': row.emp.ma || '',
-      'Ho va ten': row.emp.ten || '',
-      'Nhom': row.emp.danhSach || '',
-      'Gio vao': row.thoiGianVao || '',
-      'Gio ra': row.thoiGianRa || '',
-      'Danh gia': row.evaluationText || '',
-      'Ti le (%)': row.ratioPercent != null ? row.ratioPercent : '',
+      'Mã NV': row.emp.ma || '',
+      'Họ và tên': row.emp.ten || '',
+      'Nhóm': row.emp.danhSach || '',
+      'Giờ vào': row.thoiGianVao || '',
+      'Giờ ra': row.thoiGianRa || '',
+      'Đánh giá': row.evaluationText || '',
+      '% tham dự': row.ratioPercent != null ? `${row.ratioPercent}%` : '',
     }));
 
     const infoRows = [
-      ['Bao cao tham du cuoc hop', ''],
-      ['Ten cuoc hop:', meetingInfo.title || ''],
-      ['Khu vuc:', meetingInfo.area || ''],
-      ['Ngay:', meetingInfo.date || ''],
-      ['Gio bat dau:', meetingInfo.startTime || ''],
-      ['Gio ket thuc:', meetingInfo.endTime || ''],
+      ['BÁO CÁO THAM DỰ CUỘC HỌP', ''],
+      ['Tên cuộc họp:', meetingInfo.title || ''],
+      ['Khu vực:', meetingInfo.area || ''],
+      ['Ngày:', meetingInfo.date || ''],
+      ['Giờ bắt đầu:', meetingInfo.startTime || ''],
+      ['Giờ kết thúc:', meetingInfo.endTime || ''],
       [],
     ];
 
     const wb = XLSX.utils.book_new();
     const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
     XLSX.utils.sheet_add_json(infoSheet, rows, { origin: 'A' + (infoRows.length + 1), skipHeader: false });
+
+    // 2. Compute column auto-fit widths
+    const range = XLSX.utils.decode_range(infoSheet['!ref'] || 'A1:H100');
+    const maxColWidths = [];
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+        if (!infoSheet[cellRef]) continue;
+        const val = String(infoSheet[cellRef].v || '');
+        const len = val.length;
+        if (!maxColWidths[C] || len > maxColWidths[C]) {
+          maxColWidths[C] = len;
+        }
+      }
+    }
+    infoSheet['!cols'] = maxColWidths.map(w => ({ wch: Math.max(w + 3, 10) }));
+
+    // 3. Format and Style Cells (border, centering alignment, font, and background colors)
+    const thinBorder = { style: 'thin', color: { rgb: 'D1D5DB' } }; // Light gray border
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+
+        // Ensure cells in tables exist to render borders properly
+        if (!infoSheet[cellRef]) {
+          if ((R >= 1 && R <= 5 && C <= 1) || (R >= 7 && C <= 7)) {
+            infoSheet[cellRef] = { t: 's', v: '' };
+          } else {
+            continue;
+          }
+        }
+
+        const cell = infoSheet[cellRef];
+        cell.s = cell.s || {};
+        cell.s.font = { name: 'Segoe UI', sz: 10 };
+
+        if (R === 0) {
+          // Báo cáo Title row
+          cell.s.font = { name: 'Segoe UI', sz: 14, bold: true, color: { rgb: '0078D7' } };
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+        } else if (R >= 1 && R <= 5) {
+          // Meeting Info (Header table)
+          cell.s.font = { name: 'Segoe UI', sz: 10, bold: C === 0 };
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+          if (C === 0) {
+            cell.s.fill = { fgColor: { rgb: 'F3F4F6' } }; // Background for labels
+          }
+        } else if (R === 7) {
+          // Table Headers row
+          cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } };
+          cell.s.fill = { fgColor: { rgb: '0078D7' } }; // brand blue
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+        } else if (R > 7) {
+          // Table Data rows
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+        }
+      }
+    }
+
+    // Merge title cells A1:H1
+    infoSheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }
+    ];
+
+    // 4. Set heights to act as vertical cell padding
+    const rowHeights = [];
+    rowHeights[0] = { hpx: 40 }; // Title row height
+    for (let i = 1; i <= 5; i++) {
+      rowHeights[i] = { hpx: 22 }; // Metadata table heights
+    }
+    rowHeights[6] = { hpx: 12 }; // Separator height
+    rowHeights[7] = { hpx: 28 }; // Report header height
+    for (let i = 8; i <= range.e.r; i++) {
+      rowHeights[i] = { hpx: 24 }; // Report data rows heights
+    }
+    infoSheet['!rows'] = rowHeights;
+
     XLSX.utils.book_append_sheet(wb, infoSheet, 'BaoCaoHop');
 
     const safeName = (meetingInfo.title || 'CuocHop').replace(/\s+/g, '_');
@@ -1071,26 +1177,28 @@ export const ReportPage = () => {
 
                 <div className="relative group">
                   {/* Dropup menu - visible on hover */}
-                  <div className="absolute bottom-full right-0 mb-1 hidden group-hover:flex flex-col items-stretch z-20 min-w-[170px] bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden">
-                    <button
-                      id="btn-export-all"
-                      onClick={() => handleExportExcelData(filteredLogs)}
-                      disabled={exporting}
-                      className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50"
-                    >
-                      <Download size={12} />
-                      <span>Xuất toàn bộ ({filteredLogs.length})</span>
-                    </button>
-                    <div className="border-t border-[#2d2f3e]" />
-                    <button
-                      id="btn-export-page"
-                      onClick={() => handleExportExcelData(currentLogs)}
-                      disabled={exporting}
-                      className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50"
-                    >
-                      <Download size={12} />
-                      <span>Xuất trong trang ({currentLogs.length})</span>
-                    </button>
+                  <div className="absolute bottom-full right-0 pb-1 hidden group-hover:flex flex-col items-stretch z-20 min-w-[170px]">
+                    <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
+                      <button
+                        id="btn-export-all"
+                        onClick={() => handleExportExcelData([], true)}
+                        disabled={exporting}
+                        className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50"
+                      >
+                        <Download size={12} />
+                        <span>Xuất toàn bộ ({totalItems})</span>
+                      </button>
+                      <div className="border-t border-[#2d2f3e]" />
+                      <button
+                        id="btn-export-page"
+                        onClick={() => handleExportExcelData(currentLogs, false)}
+                        disabled={exporting}
+                        className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50"
+                      >
+                        <Download size={12} />
+                        <span>Xuất trong trang ({currentLogs.length})</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Main export trigger button */}
