@@ -965,6 +965,195 @@ export const ReportPage = () => {
     }, 150);
   };
 
+  const [isEventPdfExporting, setIsEventPdfExporting] = useState(false);
+  const [pdfExportEvents, setPdfExportEvents] = useState<any[]>([]);
+
+  const fetchAllEventLogs = async () => {
+    const { baseUrl, params } = buildEventLogsUrl({ limit: '-1', noImages: 'true' });
+    const res = await fetch(`${baseUrl}/meeting/event-logs?${params.toString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json && Array.isArray(json.data)) {
+      return json.data;
+    }
+    return [];
+  };
+
+  const handleExportEventLogsExcel = (rows: any[]) => {
+    if (!rows || rows.length === 0) return;
+
+    const formattedRows = rows.map((item, idx) => ({
+      'STT': idx + 1,
+      'Khu vực': item.vung || '',
+      'Họ và tên': item.ten || '',
+      'Mã nhân viên': item.ma || '',
+      'Phòng ban/Danh sách': item.danhSach || '',
+      'Thời gian': item.thoiGian || '',
+      'Độ chính xác (%)': item.accuracy || 95.0,
+    }));
+
+    const infoRows = [
+      ['DANH SÁCH SỰ KIỆN GHI NHẬN', '', '', '', '', '', ''],
+      ['Tìm kiếm:', appliedSearch || 'Tất cả', 'Khu vực:', appliedZone === 'All' ? 'Tất cả' : appliedZone, '', '', ''],
+      ['Danh sách:', appliedList === 'All' ? 'Tất cả' : appliedList, 'Loại sự kiện:', appliedEventType === 'All' ? 'Tất cả' : (appliedEventType === 'in' ? 'Đi vào' : 'Đi ra'), '', '', ''],
+      ['Từ ngày:', appliedStartDate || 'Không giới hạn', 'Đến ngày:', appliedEndDate || 'Không giới hạn', '', '', ''],
+      [],
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
+    XLSX.utils.sheet_add_json(infoSheet, formattedRows, { origin: 'A' + (infoRows.length + 1), skipHeader: false });
+
+    // Compute column widths
+    const range = XLSX.utils.decode_range(infoSheet['!ref'] || 'A1:G100');
+    const maxColWidths = [];
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        if (R === 0 || ((R >= 1 && R <= 3) && C >= 4)) continue;
+        const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+        if (!infoSheet[cellRef]) continue;
+        const val = String(infoSheet[cellRef].v || '');
+        const len = val.length;
+        if (!maxColWidths[C] || len > maxColWidths[C]) {
+          maxColWidths[C] = len;
+        }
+      }
+    }
+    infoSheet['!cols'] = maxColWidths.map(w => ({ wch: Math.max(w + 3, 10) }));
+
+    const thinBorder = { style: 'thin', color: { rgb: 'D1D5DB' } };
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+
+        if (!infoSheet[cellRef]) {
+          const isMetadataCell = (R >= 1 && R <= 3 && C <= 3);
+          const isTableDetailCell = (R >= 5 && C <= 6);
+          if (isMetadataCell || isTableDetailCell) {
+            infoSheet[cellRef] = { t: 's', v: '' };
+          } else {
+            continue;
+          }
+        }
+
+        const cell = infoSheet[cellRef];
+        cell.s = cell.s || {};
+        cell.s.font = { name: 'Segoe UI', sz: 10 };
+
+        if (R === 0) {
+          cell.s.font = { name: 'Segoe UI', sz: 14, bold: true, color: { rgb: '0078D7' } };
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+        } else if (R >= 1 && R <= 3) {
+          const isLabel = C === 0 || C === 2;
+          const isValue = C === 1 || C === 3;
+          if (isLabel || isValue) {
+            cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
+            cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            cell.s.border = {
+              top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+            };
+            if (isLabel) {
+              cell.s.fill = { fgColor: { rgb: 'F3F4F6' } };
+            }
+          }
+        } else if (R === 5) {
+          cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } };
+          cell.s.fill = { fgColor: { rgb: '0078D7' } };
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+        } else if (R > 5) {
+          cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+          cell.s.border = {
+            top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+          };
+        }
+      }
+    }
+
+    infoSheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+    ];
+
+    const rowHeights = [];
+    rowHeights[0] = { hpx: 40 };
+    for (let i = 1; i <= 3; i++) rowHeights[i] = { hpx: 22 };
+    rowHeights[4] = { hpx: 12 };
+    rowHeights[5] = { hpx: 28 };
+    for (let i = 6; i <= range.e.r; i++) rowHeights[i] = { hpx: 24 };
+    infoSheet['!rows'] = rowHeights;
+
+    XLSX.utils.book_append_sheet(wb, infoSheet, 'DanhSachSuKien');
+    
+    // Write out buffer and download
+    const buf = XLSX.write(wb, { type: 'binary', bookType: 'xlsx' });
+    const s2ab = (s: string) => {
+      const buf = new ArrayBuffer(s.length);
+      const view = new Uint8Array(buf);
+      for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+      return buf;
+    };
+    const blob = new Blob([s2ab(buf)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'DanhSachSuKien_LCMS.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportEventLogsPDF = async (rows: any[]) => {
+    if (!rows || rows.length === 0) return;
+    setIsEventPdfExporting(true);
+    setPdfExportEvents(rows);
+
+    setTimeout(async () => {
+      const element = document.getElementById('event-logs-pdf-template');
+      if (!element) {
+        setIsEventPdfExporting(false);
+        return;
+      }
+
+      try {
+        const canvas = await html2canvas(element, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          allowTaint: true,
+        });
+        const imgData = canvas.toDataURL('image/png');
+
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgWidth = 210;
+        const pageHeight = 295;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft >= 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        pdf.save(`BaoCaoSuKien_${Date.now()}.pdf`);
+      } catch (err) {
+        console.error('Failed to generate Event PDF:', err);
+        alert('Có lỗi xảy ra khi tạo file PDF.');
+      } finally {
+        setIsEventPdfExporting(false);
+      }
+    }, 150);
+  };
+
   // Trigger Attendance export simulation
   const handleExportAttendance = (format: 'CSV' | 'XLSX') => {
     let typeSlug = 'BaoCao';
@@ -1345,39 +1534,83 @@ export const ReportPage = () => {
                 </div>
 
                 <div className="relative">
-                  {/* Dropup menu - visible on click toggle */}
+                  {/* Dropdown menu - visible on click toggle */}
                   {isEventExportOpen && (
                     <>
                       <div
                         className="fixed inset-0 z-30"
                         onClick={() => setIsEventExportOpen(false)}
                       />
-                      <div className="absolute bottom-full right-0 pb-1 z-40 min-w-[170px]">
+                      <div className="absolute top-full right-0 pt-1 z-40 min-w-[170px]">
                         <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
+                          <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-[#2d2f3e] text-left">
+                            Xuất Excel
+                          </div>
                           <button
                             id="btn-export-all"
-                            onClick={() => {
-                              handleExportExcelData([], true);
+                            onClick={async () => {
                               setIsEventExportOpen(false);
+                              setExporting(true);
+                              try {
+                                const allData = await fetchAllEventLogs();
+                                handleExportEventLogsExcel(allData);
+                              } catch (e: any) {
+                                alert("Lỗi khi tải dữ liệu: " + e.message);
+                              } finally {
+                                setExporting(false);
+                              }
                             }}
                             disabled={exporting}
                             className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50 cursor-pointer"
                           >
                             <Download size={12} />
-                            <span>Xuất toàn bộ ({totalItems})</span>
+                            <span>Toàn bộ ({totalItems})</span>
                           </button>
-                          <div className="border-t border-[#2d2f3e]" />
                           <button
                             id="btn-export-page"
                             onClick={() => {
-                              handleExportExcelData(currentLogs, false);
+                              handleExportEventLogsExcel(currentLogs);
                               setIsEventExportOpen(false);
                             }}
                             disabled={exporting}
                             className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50 cursor-pointer"
                           >
                             <Download size={12} />
-                            <span>Xuất trong trang ({currentLogs.length})</span>
+                            <span>Trong trang ({currentLogs.length})</span>
+                          </button>
+
+                          <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-y border-[#2d2f3e] text-left">
+                            Xuất PDF
+                          </div>
+                          <button
+                            onClick={async () => {
+                              setIsEventExportOpen(false);
+                              setExporting(true);
+                              try {
+                                const allData = await fetchAllEventLogs();
+                                handleExportEventLogsPDF(allData);
+                              } catch (e: any) {
+                                alert("Lỗi khi tải dữ liệu: " + e.message);
+                              } finally {
+                                setExporting(false);
+                              }
+                            }}
+                            disabled={exporting || isEventPdfExporting}
+                            className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50 cursor-pointer"
+                          >
+                            <FileText size={12} />
+                            <span>Toàn bộ ({totalItems})</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleExportEventLogsPDF(currentLogs);
+                              setIsEventExportOpen(false);
+                            }}
+                            disabled={exporting || isEventPdfExporting}
+                            className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap disabled:opacity-50 cursor-pointer"
+                          >
+                            <FileText size={12} />
+                            <span>Trong trang ({currentLogs.length})</span>
                           </button>
                         </div>
                       </div>
@@ -1389,10 +1622,10 @@ export const ReportPage = () => {
                     id="btn-export-excel"
                     disabled={exporting}
                     onClick={() => setIsEventExportOpen(prev => !prev)}
-                    className={`px-4 py-1.5 bg-[#0078d7] hover:bg-[#0069be] text-white font-medium rounded text-xs transition shadow flex items-center space-x-1.5 ${exporting ? 'opacity-70 cursor-wait' : ''}`}
+                    className={`px-4 py-1.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white font-medium rounded-lg text-xs transition shadow flex items-center space-x-1.5 ${exporting ? 'opacity-70 cursor-wait' : ''}`}
                   >
                     <Download size={13} />
-                    <span>{exporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
+                    <span>{exporting ? 'Đang xuất...' : 'Xuất báo cáo'}</span>
                   </button>
                 </div>
               </div>
@@ -3344,6 +3577,77 @@ export const ReportPage = () => {
                 </div>
               );
             })()}
+
+            {/* Hidden Event Logs PDF Container */}
+            <div
+              id="event-logs-pdf-template"
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                top: '-9999px',
+                width: '1024px',
+                backgroundColor: '#ffffff',
+                color: '#000000',
+              }}
+            >
+              <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+                <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
+                  DANH SÁCH SỰ KIỆN GHI NHẬN
+                </h2>
+
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tìm kiếm:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{appliedSearch || 'Tất cả'}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Khu vực:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{appliedZone === 'All' ? 'Tất cả' : appliedZone}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Danh sách:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedList === 'All' ? 'Tất cả' : appliedList}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Loại sự kiện:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedEventType === 'All' ? 'Tất cả' : (appliedEventType === 'in' ? 'Đi vào' : 'Đi ra')}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Từ ngày:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedStartDate || 'Không giới hạn'}</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đến ngày:</td>
+                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedEndDate || 'Không giới hạn'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '8%' }}>STT</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Khu vực</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Họ và tên</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Mã nhân viên</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '18%' }}>Danh sách</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Thời gian</th>
+                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '10%' }}>Độ chính xác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pdfExportEvents.map((row, idx) => (
+                      <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>
+                          {`${row.vung} (${getAreaSuffix(row)})`}
+                        </td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.ten || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.ma || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>{row.danhSach || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.thoiGian || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{`${row.accuracy || 95}%`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
           );
 };

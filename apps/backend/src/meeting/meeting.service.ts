@@ -543,8 +543,9 @@ export class MeetingService {
   } = {}) {
     console.log(`[DEBUG Backend] Bắt đầu truy vấn getEventLogs với các tham số:`, opts);
     const page   = Math.max(1, opts.page   || 1);
-    const limit  = opts.limit === -1 ? 1000000 : Math.min(500, Math.max(1, opts.limit || 10));
-    const offset = opts.limit === -1 ? 0 : (page - 1) * limit;
+    const parsedLimit = opts.limit !== undefined ? Number(opts.limit) : 10;
+    const limit  = parsedLimit === -1 ? 1000000 : Math.min(500, Math.max(1, parsedLimit));
+    const offset = parsedLimit === -1 ? 0 : (page - 1) * limit;
 
     const { listMap, locationNameByCameraId } = await this.buildLookupMaps();
 
@@ -591,7 +592,7 @@ export class MeetingService {
       `}
       WHERE ${where}
       ORDER BY ev.create_time DESC
-      ${opts.limit === -1 ? '' : `LIMIT ${limit} OFFSET ${offset}`};
+      ${parsedLimit === -1 ? '' : `LIMIT ${limit} OFFSET ${offset}`};
     `;
 
     try {
