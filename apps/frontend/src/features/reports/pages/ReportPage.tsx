@@ -74,6 +74,9 @@ const timeStringToSeconds = (tStr: string): number => {
 };
 
 const getMeetingPhoto = (seed: string, isLoi: boolean, type: 'in' | 'out') => {
+  if (!seed || typeof seed !== 'string') {
+    seed = '1';
+  }
   if (isLoi) {
     if (type === 'in') {
       return "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=300&h=300";
@@ -718,6 +721,66 @@ export const ReportPage = () => {
       setAttendanceEndDate(end);
     }
   }, [attendanceWeekNumber, attendanceYear, attendanceMonthNumber, attendanceType, getMondayOfWeek, getSundayOfWeek]);
+
+  // Daily Attendance DB Query states & effect
+  const [dailyReportData, setDailyReportData] = useState<any[]>([]);
+  const [isDailyReportLoading, setIsDailyReportLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (attendanceType !== 'Báo cáo theo ngày') return;
+    let isCancelled = false;
+    const fetchDailyReport = async () => {
+      setIsDailyReportLoading(true);
+      try {
+        const baseUrl = getBackendUrl();
+        const areasParam = encodeURIComponent(selectedAttendanceAreas.join(','));
+        const res = await fetch(
+          `${baseUrl}/meeting/attendance/daily-report?date=${attendanceStartDate}&areas=${areasParam}&groupId=${attendanceGroup}`
+        );
+        if (res.ok && !isCancelled) {
+          const data = await res.json();
+          setDailyReportData(data.attendance || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch daily attendance report:', err);
+      } finally {
+        if (!isCancelled) setIsDailyReportLoading(false);
+      }
+    };
+    fetchDailyReport();
+    return () => { isCancelled = true; };
+  }, [attendanceStartDate, selectedAttendanceAreas, attendanceGroup, attendanceType]);
+
+  // Range (Weekly/Monthly) Attendance DB Query states & effect
+  const [rangeReportData, setRangeReportData] = useState<any[]>([]);
+  const [isRangeReportLoading, setIsRangeReportLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    const isRange = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+    if (!isRange) return;
+    if (!attendanceStartDate || !attendanceEndDate) return;
+    let isCancelled = false;
+    const fetchRangeReport = async () => {
+      setIsRangeReportLoading(true);
+      try {
+        const baseUrl = getBackendUrl();
+        const areasParam = encodeURIComponent(selectedAttendanceAreas.join(','));
+        const res = await fetch(
+          `${baseUrl}/meeting/attendance/range-report?startDate=${attendanceStartDate}&endDate=${attendanceEndDate}&areas=${areasParam}&groupId=${attendanceGroup}`
+        );
+        if (res.ok && !isCancelled) {
+          const data = await res.json();
+          setRangeReportData(data.attendance || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch range attendance report:', err);
+      } finally {
+        if (!isCancelled) setIsRangeReportLoading(false);
+      }
+    };
+    fetchRangeReport();
+    return () => { isCancelled = true; };
+  }, [attendanceStartDate, attendanceEndDate, selectedAttendanceAreas, attendanceGroup, attendanceType]);
 
   // Weekly/Monthly Attendance Sub-view states
   const [selectedWeeklyAttendee, setSelectedWeeklyAttendee] = useState<any | null>(null);
@@ -2507,9 +2570,28 @@ export const ReportPage = () => {
                 {/* Body (Split columns) */}
                 {(() => {
                   const isWeekly = attendanceType === 'Báo cáo theo tuần';
-                  const logs = isWeekly
-                    ? generateWeeklyLogs(selectedWeeklyAttendee.ma, attendanceStartDate)
-                    : generateMonthlyLogs(selectedWeeklyAttendee.ma, attendanceMonthNumber, attendanceYear);
+                  const daysOfWeekNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+                  
+                  // Use real dailyLogs from API if available
+                  const realLogs = (selectedWeeklyAttendee.dailyLogs || []).map((log: any) => {
+                    const d = new Date(log.date);
+                    const dayName = daysOfWeekNames[d.getDay()];
+                    return {
+                      dayName,
+                      dateStr: log.date,
+                      checkIn: log.thoiGianVao || 'Trống',
+                      checkOut: log.thoiGianRa || 'Trống',
+                      totalHours: log.hours ? `${Math.round(log.hours * 100) / 100} h` : '0 h',
+                      entryEvent: log.entryEvent || null,
+                      exitEvent: log.exitEvent || null,
+                    };
+                  });
+
+                  const logs = realLogs.length > 0
+                    ? realLogs
+                    : (isWeekly
+                        ? generateWeeklyLogs(selectedWeeklyAttendee.ma, attendanceStartDate)
+                        : generateMonthlyLogs(selectedWeeklyAttendee.ma, attendanceMonthNumber, attendanceYear));
                   const activeLog = logs.find(log => log.dateStr === selectedDetailDayStr) || logs[0];
 
                   return (
@@ -2583,28 +2665,34 @@ export const ReportPage = () => {
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào</span>
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${activeLog.checkIn === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
                                   {activeLog.checkIn}
                                 </span>
                               </div>
-                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                <img
-                                  src={getMeetingPhoto(selectedWeeklyAttendee.ma, false, 'in')}
-                                  alt="Check-in"
-                                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                                />
-                                <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
-                                  <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
-                                  <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
-                                  <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
-                                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
-                                </div>
-                                <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
-                                  Check-in Gate
-                                </span>
-                                <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
-                                  99.4% MATCH
-                                </span>
+                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
+                                {activeLog.entryEvent?.cropped_face_images?.[0] ? (
+                                  <>
+                                    <img
+                                      src={activeLog.entryEvent.cropped_face_images[0]}
+                                      alt="Check-in"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                    </div>
+                                    <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                      Ảnh check-in
+                                    </span>
+                                  </>
+                                ) : (
+                                  <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
+                                    <CameraOff size={28} />
+                                    <span className="text-[10px] font-mono">Không có ảnh</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -2612,28 +2700,34 @@ export const ReportPage = () => {
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra</span>
-                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${activeLog.checkOut === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
                                   {activeLog.checkOut}
                                 </span>
                               </div>
-                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                <img
-                                  src={getMeetingPhoto(selectedWeeklyAttendee.ma, false, 'out')}
-                                  alt="Check-out"
-                                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                                />
-                                <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
-                                  <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
-                                  <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
-                                  <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
-                                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
-                                </div>
-                                <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
-                                  Check-out Gate
-                                </span>
-                                <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
-                                  98.7% MATCH
-                                </span>
+                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
+                                {activeLog.exitEvent?.cropped_face_images?.[0] ? (
+                                  <>
+                                    <img
+                                      src={activeLog.exitEvent.cropped_face_images[0]}
+                                      alt="Check-out"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                    </div>
+                                    <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                      Ảnh check-out
+                                    </span>
+                                  </>
+                                ) : (
+                                  <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
+                                    <CameraOff size={28} />
+                                    <span className="text-[10px] font-mono">Không có ảnh</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -2668,57 +2762,89 @@ export const ReportPage = () => {
                     </div>
                   </div>
                   {(() => {
-                    const baseEmployees = [
-                      { ma: "080203011585", ten: "Phan Hữu Thiên Phúc", danhSach: "nhóm nhân viên A" },
-                      { ma: "010203045567", ten: "Trần Phước Lợi", danhSach: "nhóm nhân viên B" },
-                      { ma: "090302012948", ten: "Lê Thị Bình", danhSach: "nhóm nhân viên B" },
-                      { ma: "080203011234", ten: "Hoàng Văn Nam", danhSach: "nhóm nhân viên C" },
-                      { ma: "080203011567", ten: "Nguyễn Thị Mai", danhSach: "nhóm nhân viên D" },
-                      { ma: "080203011888", ten: "Phạm Thành Long", danhSach: "nhóm nhân viên A" },
-                      { ma: "020205094857", ten: "Nguyễn Văn An", danhSach: "Khách hàng / Khác" },
-                      { ma: "030405060708", ten: "Vũ Thị Thủy", danhSach: "Khách hàng / Khác" }
-                    ];
-
-                    const selectedGroupName = attendanceGroup === 'All'
+                    const isDaily = attendanceType === 'Báo cáo theo ngày';
+                    const isRange = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+                    const selectedGroupNameCount = attendanceGroup === 'All'
                       ? 'All'
                       : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
-
-                    const activeEmployees = baseEmployees.filter(emp =>
-                      selectedGroupName === 'All' || emp.danhSach.toLowerCase() === selectedGroupName.toLowerCase()
-                    );
-
+                    let activeCount = 0;
+                    if (isDaily) {
+                      activeCount = selectedGroupNameCount === 'All'
+                        ? employees.length
+                        : employees.filter(emp => {
+                          const groups: string[] = emp.human_group || [];
+                          return groups.some((g: string) => g.toLowerCase() === selectedGroupNameCount.toLowerCase());
+                        }).length;
+                    } else if (isRange) {
+                      activeCount = rangeReportData.length;
+                    }
                     return (
                       <div className="text-[11px] font-mono text-slate-400">
-                        Phát hiện: <span className="text-white font-bold font-mono">{activeEmployees.length}</span> nhân sự
+                        Phát hiện: <span className="text-white font-bold font-mono">{activeCount}</span> nhân sự
                       </div>
                     );
                   })()}
                 </div>
 
                 {(() => {
-                  const baseEmployees = [
-                    { ma: "080203011585", ten: "Phan Hữu Thiên Phúc", danhSach: "nhóm nhân viên A" },
-                    { ma: "010203045567", ten: "Trần Phước Lợi", danhSach: "nhóm nhân viên B" },
-                    { ma: "090302012948", ten: "Lê Thị Bình", danhSach: "nhóm nhân viên B" },
-                    { ma: "080203011234", ten: "Hoàng Văn Nam", danhSach: "nhóm nhân viên C" },
-                    { ma: "080203011567", ten: "Nguyễn Thị Mai", danhSach: "nhóm nhân viên D" },
-                    { ma: "080203011888", ten: "Phạm Thành Long", danhSach: "nhóm nhân viên A" },
-                    { ma: "020205094857", ten: "Nguyễn Văn An", danhSach: "Khách hàng / Khác" },
-                    { ma: "030405060708", ten: "Vũ Thị Thủy", danhSach: "Khách hàng / Khác" }
-                  ];
+                  const isDaily = attendanceType === 'Báo cáo theo ngày';
+                  const isWeeklyOrMonthly = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+                  const showRightSidebar = !isWeeklyOrMonthly;
 
-                  const selectedGroupName = attendanceGroup === 'All'
+                  const selectedGroupNameForFilter = attendanceGroup === 'All'
                     ? 'All'
                     : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
 
-                  const activeEmployees = baseEmployees.filter(emp =>
-                    selectedGroupName === 'All' || emp.danhSach.toLowerCase() === selectedGroupName.toLowerCase()
-                  );
+                  // Daily roster: real employees from DB
+                  const activeRealEmployees = employees.filter(emp => {
+                    if (selectedGroupNameForFilter === 'All') return true;
+                    const groups: string[] = emp.human_group || [];
+                    return groups.some((g: string) => g.toLowerCase() === selectedGroupNameForFilter.toLowerCase());
+                  });
 
+                  const dailyRoster = (() => {
+                    // Always show all active real employees in the system,
+                    // enriched with checkin/checkout times from dailyReportData API
+                    return activeRealEmployees.map((emp: any) => {
+                      const match = dailyReportData.find((item: any) => item.employeeId === emp.id);
+                      const thoiGianVao = match ? (match.thoiGianVao || 'Trống') : 'Trống';
+                      const thoiGianRa = match ? (match.thoiGianRa || 'Trống') : 'Trống';
+                      const entryEvent = match ? (match.entryEvent || null) : null;
+                      const exitEvent = match ? (match.exitEvent || null) : null;
+                      return {
+                        id: emp.id,
+                        ma: emp.maGiayTo || '',
+                        ten: emp.hoTen || '',
+                        danhSach: (emp.human_group || []).join(', ') || 'Khách hàng / Khác',
+                        thoiGianVao,
+                        thoiGianRa,
+                        entryEvent,
+                        exitEvent,
+                        totalHours: calculateWorkHours(thoiGianVao, thoiGianRa),
+                      };
+                    });
+                  })();
+
+                  // Range roster: from activeRealEmployees enriched by rangeReportData (weekly / monthly)
+                  const rangeRoster = activeRealEmployees.map((emp: any) => {
+                    const match = rangeReportData.find((item: any) => item.employeeId === emp.id);
+                    const th = match ? Math.round(match.totalHours * 100) / 100 : 0;
+                    return {
+                      id: emp.id,
+                      ma: emp.maGiayTo || '',
+                      ten: emp.hoTen || '',
+                      danhSach: (emp.human_group || []).join(', ') || 'Khách hàng / Khác',
+                      thoiGianVao: '',
+                      thoiGianRa: '',
+                      entryEvent: null,
+                      exitEvent: null,
+                      totalHours: `${th} h`,
+                      dailyLogs: match?.dailyLogs || [],
+                    };
+                  });
+
+                  const activeEmployees = isDaily ? dailyRoster : rangeRoster;
                   const selectedAttendee = activeEmployees.find(emp => emp.ma === selectedAttendanceEmpCode) || activeEmployees[0];
-
-                  const isWeeklyOrMonthly = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
-                  const showRightSidebar = !isWeeklyOrMonthly;
 
                   return (
                     <div className="flex-1 flex overflow-hidden min-h-[300px]">
@@ -2764,15 +2890,9 @@ export const ReportPage = () => {
                                           <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
                                           <td className={`py-2.5 px-4 font-sans font-medium ${(isSelected && !isWeeklyOrMonthly) ? 'text-[#00a2e8]' : 'text-slate-100'}`}>{emp.ten}</td>
                                           <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
-                                          {!isWeeklyOrMonthly && <td className="py-2.5 px-4 text-emerald-400 font-semibold">{isPhuc ? '08:02:11' : '07:55:04'}</td>}
-                                          {!isWeeklyOrMonthly && <td className="py-2.5 px-4 text-emerald-400 font-semibold">{isPhuc ? '17:35:45' : '17:30:12'}</td>}
-                                          <td className="py-2.5 px-4 text-white">
-                                            {(() => {
-                                              if (attendanceType === 'Báo cáo theo tuần') return isPhuc ? '44.25 h' : '43.75 h';
-                                              if (attendanceType === 'Báo cáo theo tháng') return isPhuc ? '174.5 h' : '176.0 h';
-                                              return '8.5 h';
-                                            })()}
-                                          </td>
+                                          {!isWeeklyOrMonthly && <td className="py-2.5 px-4 text-emerald-400 font-semibold">{emp.thoiGianVao !== 'Trống' ? emp.thoiGianVao : <span className="text-slate-600">Trống</span>}</td>}
+                                          {!isWeeklyOrMonthly && <td className="py-2.5 px-4 text-emerald-400 font-semibold">{emp.thoiGianRa !== 'Trống' ? emp.thoiGianRa : <span className="text-slate-600">Trống</span>}</td>}
+                                          <td className="py-2.5 px-4 text-white">{emp.totalHours || '0 h'}</td>
                                         </tr>
                                       );
                                     })}
@@ -2924,38 +3044,38 @@ export const ReportPage = () => {
                         <div className="w-72 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
                           {selectedAttendee ? (
                             <div className="p-4 space-y-4 text-left">
-                              <div className="pb-3 border-b border-[#2d2f3c]/60">
-                                <h4 className="font-bold text-xs text-white uppercase tracking-wider">{selectedAttendee.ten}</h4>
-                                <p className="text-[10px] text-slate-400 font-mono mt-0.5">Mã NV: {selectedAttendee.ma}</p>
-                                <p className="text-[9px] text-[#00a2e8] font-semibold mt-1">Nhóm: {selectedAttendee.danhSach}</p>
-                              </div>
-
                               {/* Entry Section */}
                               <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào</span>
-                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
-                                    {selectedAttendee.ma === "080203011585" ? '08:02:11' : '07:55:04'}
+                                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedAttendee.thoiGianVao === 'Trống' || !selectedAttendee.thoiGianVao ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                    {selectedAttendee.thoiGianVao || 'Trống'}
                                   </span>
                                 </div>
-                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                  <img
-                                    src={getMeetingPhoto(selectedAttendee.ma, false, 'in')}
-                                    alt="Check-in"
-                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                                  />
-                                  <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
-                                    <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
-                                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
-                                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
-                                    <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
-                                  </div>
-                                  <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
-                                    Ảnh check-in
-                                  </span>
-                                  <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
-                                    99.4% MATCH
-                                  </span>
+                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
+                                  {selectedAttendee.entryEvent?.cropped_face_images?.[0] ? (
+                                    <>
+                                      <img
+                                        src={selectedAttendee.entryEvent.cropped_face_images[0]}
+                                        alt="Check-in"
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                      </div>
+                                      <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                        Ảnh check-in
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
+                                      <CameraOff size={28} />
+                                      <span className="text-[10px] font-mono">Không có ảnh</span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -2963,28 +3083,34 @@ export const ReportPage = () => {
                               <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra</span>
-                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
-                                    {selectedAttendee.ma === "080203011585" ? '17:35:45' : '17:30:12'}
+                                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedAttendee.thoiGianRa === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                    {selectedAttendee.thoiGianRa || 'Trống'}
                                   </span>
                                 </div>
-                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                  <img
-                                    src={getMeetingPhoto(selectedAttendee.ma, false, 'out')}
-                                    alt="Check-out"
-                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                                  />
-                                  <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
-                                    <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
-                                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
-                                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
-                                    <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
-                                  </div>
-                                  <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
-                                    Ảnh check-out
-                                  </span>
-                                  <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
-                                    98.7% MATCH
-                                  </span>
+                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
+                                  {selectedAttendee.exitEvent?.cropped_face_images?.[0] ? (
+                                    <>
+                                      <img
+                                        src={selectedAttendee.exitEvent.cropped_face_images[0]}
+                                        alt="Check-out"
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                      </div>
+                                      <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                        Ảnh check-out
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
+                                      <CameraOff size={28} />
+                                      <span className="text-[10px] font-mono">Không có ảnh</span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>

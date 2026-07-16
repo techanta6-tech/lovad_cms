@@ -71,6 +71,27 @@ export class MeetingController {
     });
   }
 
+  @Get('attendance/daily-report')
+  async getDailyAttendanceReport(
+    @Query('date') date: string,
+    @Query('areas') areas?: string,
+    @Query('groupId') groupId?: string,
+  ) {
+    const areaList = areas ? areas.split(',') : [];
+    return this.meetingService.getDailyAttendanceReport(date, areaList, groupId || 'All');
+  }
+
+  @Get('attendance/range-report')
+  async getRangeAttendanceReport(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('areas') areas?: string,
+    @Query('groupId') groupId?: string,
+  ) {
+    const areaList = areas ? areas.split(',') : [];
+    return this.meetingService.getRangeAttendanceReport(startDate, endDate, areaList, groupId || 'All');
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.meetingService.findOne(id);

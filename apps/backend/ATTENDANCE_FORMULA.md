@@ -6,6 +6,9 @@ Tài liệu này ghi nhận công thức tính giờ công chấm công được
 Được cấu hình trong file `.env`:
 - **Giờ bắt đầu**: `07:30` (`SHIFT_START_TIME`)
 - **Giờ kết thúc**: `17:00` (`SHIFT_END_TIME`)
+- **Khoảng thời gian quét bù (quét trước/sau ca)**: `2` giờ (`SHIFT_BUFFER_HOURS`). 
+  - Nghĩa là khoảng thời gian truy vấn sự kiện thực tế trong ngày sẽ chạy từ: `(SHIFT_START_TIME - SHIFT_BUFFER_HOURS)` đến `(SHIFT_END_TIME + SHIFT_BUFFER_HOURS)`.
+  - Mặc định: quét từ `05:30:00` đến `19:00:00` cùng ngày.
 
 ## 2. Công thức tính giờ công
 Giờ công làm việc thực tế trong ngày của một nhân sự được tính như sau:

@@ -768,4 +768,405 @@ export class MeetingService {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buf);
   }
+
+  async getDailyAttendanceReport(dateStr: string, areaNames: string[], groupId: string) {
+    const shiftStart = process.env.SHIFT_START_TIME || '07:30';
+    const shiftEnd = process.env.SHIFT_END_TIME || '17:00';
+    const shiftBufferHours = parseInt(process.env.SHIFT_BUFFER_HOURS || '2', 10);
+
+    const getOffsetTimeStr = (timeStr: string, offsetHours: number): string => {
+      const [h, m] = timeStr.split(':').map(Number);
+      let totalMinutes = h * 60 + (m || 0) + offsetHours * 60;
+      if (totalMinutes < 0) totalMinutes = 0;
+      if (totalMinutes >= 24 * 60) totalMinutes = 24 * 60 - 1;
+      
+      const newH = Math.floor(totalMinutes / 60);
+      const newM = totalMinutes % 60;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(newH)}:${pad(newM)}:00`;
+    };
+
+    const startTimeStr = getOffsetTimeStr(shiftStart, -shiftBufferHours);
+    const endTimeStr = getOffsetTimeStr(shiftEnd, shiftBufferHours);
+
+    const startTime = `${dateStr} ${startTimeStr}`;
+    const endTime = `${dateStr} ${endTimeStr}`;
+
+    // 1. Fetch location ids matching selected areas
+    const locations = await this.cms.location.findMany({
+      where: { name: { in: areaNames } }
+    });
+    const locationIds = locations.map(loc => loc.id);
+
+    // 2. Fetch location camera binds
+    const binds = await this.cms.location_camera_bind.findMany({
+      where: { location_id: { in: locationIds } },
+    });
+
+    const checkinCameraIds = binds
+      .filter(b => b.role.includes('checkin') || b.role.length === 0)
+      .map(b => b.camera_id)
+      .filter(Boolean);
+    const checkoutCameraIds = binds
+      .filter(b => b.role.includes('checkout') || b.role.length === 0)
+      .map(b => b.camera_id)
+      .filter(Boolean);
+
+    if (binds.length === 0) {
+      return { attendance: [] };
+    }
+
+    // 3. Prepare parameters and query SQL
+    const queryArgs: any[] = [startTime, endTime, checkinCameraIds];
+    let groupFilterSql = '';
+    if (groupId && groupId !== 'All') {
+      groupFilterSql = `AND h.list_ids && $4::varchar[]`;
+      queryArgs.push([groupId]);
+    }
+
+    const query = `
+      SELECT 
+          es.object_id,
+          ev.create_time AS time_created,
+          h.full_name,
+          h.document_id,
+          h.cropped_face_images,
+          ca.camera_friendly_name AS camera_name,
+          ca.area_name,
+          ei_full.image_path AS full_image_path,
+          ei_face.image_path AS face_image_path
+      FROM event_vms_parent ev
+      INNER JOIN event_statistic_parent es 
+          ON ev.source_id = es.id
+      INNER JOIN human_info h 
+          ON es.object_id = h.id
+      LEFT JOIN camera_area_event_source ca 
+          ON es.source_id = ca.area_id
+      LEFT JOIN event_image_parent ei_full
+          ON ev.source_id = ei_full.statistic_id AND ei_full.type = 1
+      LEFT JOIN event_image_parent ei_face
+          ON ev.source_id = ei_face.statistic_id AND ei_face.type = 4
+      WHERE 
+          ev.create_time >= $1::timestamp 
+          AND ev.create_time <= $2::timestamp
+          AND es.camera_event_id = ANY($3::varchar[])
+          ${groupFilterSql}
+          AND ev.is_valid = true 
+          AND ev.is_deleted = false
+      ORDER BY ev.create_time ASC;
+    `;
+
+    const mapEvent = (e: any) => {
+      let faceImgBase64: string | null = null;
+      if (e.cropped_face_images) {
+        const buffers = e.cropped_face_images;
+        if (Array.isArray(buffers) && buffers.length > 0) {
+          const buf = buffers[0];
+          if (buf) {
+            const rawBuf = Buffer.isBuffer(buf) ? buf : (buf.data ? Buffer.from(buf.data) : null);
+            if (rawBuf) {
+              faceImgBase64 = `data:image/jpeg;base64,${rawBuf.toString('base64')}`;
+            }
+          }
+        } else if (Buffer.isBuffer(buffers)) {
+          faceImgBase64 = `data:image/jpeg;base64,${buffers.toString('base64')}`;
+        }
+      }
+      return {
+        ...e,
+        cropped_face_images: faceImgBase64 ? [faceImgBase64] : []
+      };
+    };
+
+    // Parallel execution for check-in and check-out
+    const checkinQuery = checkinCameraIds.length > 0
+      ? this.lcms.$queryRawUnsafe<any[]>(query, ...queryArgs)
+      : Promise.resolve([]);
+
+    const checkoutArgs = [...queryArgs];
+    checkoutArgs[2] = checkoutCameraIds;
+    const checkoutQuery = checkoutCameraIds.length > 0
+      ? this.lcms.$queryRawUnsafe<any[]>(query, ...checkoutArgs)
+      : Promise.resolve([]);
+
+    const [checkinEventsRaw, checkoutEventsRaw] = await Promise.all([
+      checkinQuery,
+      checkoutQuery,
+    ]);
+
+    const checkinEvents = checkinEventsRaw.map(mapEvent);
+    const checkoutEvents = checkoutEventsRaw.map(mapEvent);
+
+    // Use UTC-based boundary comparison because DB stores UTC timestamps
+    // e.g. dateStr = '2026-07-17', shiftStart = '07:30' => treat as UTC+7 local
+    // Convert to UTC: 07:30 ICT = 00:30 UTC
+    const TZ_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
+    const parseLocalToUTCMs = (dateStr: string, timeStr: string): number => {
+      const dt = new Date(`${dateStr}T${timeStr}:00`);
+      return dt.getTime() - TZ_OFFSET_MS;
+    };
+
+    const tStartMs = parseLocalToUTCMs(dateStr, shiftStart);
+    const tEndMs = parseLocalToUTCMs(dateStr, shiftEnd);
+
+    const extractLocalTimeStr = (dateVal: Date | string): string | null => {
+      const formatted = this.formatDateToLocalString(dateVal);
+      if (!formatted) return null;
+      return formatted.split('-')[1] || null;
+    };
+
+    const allEmployeeIds = new Set<string>();
+    for (const e of checkinEvents) allEmployeeIds.add(e.object_id);
+    for (const e of checkoutEvents) allEmployeeIds.add(e.object_id);
+
+    const attendance: any[] = [];
+
+    for (const empId of allEmployeeIds) {
+      const empCheckin = checkinEvents.filter(e => e.object_id === empId).map(e => ({ ...e, type: 'in' as const }));
+      const empCheckout = checkoutEvents.filter(e => e.object_id === empId).map(e => ({ ...e, type: 'out' as const }));
+
+      const allEmpEvents = [...empCheckin, ...empCheckout].sort(
+        (a, b) => new Date(a.time_created).getTime() - new Date(b.time_created).getTime()
+      );
+
+      // Entry Event logic
+      const nearestBeforeStart = allEmpEvents.filter(e => new Date(e.time_created).getTime() < tStartMs).pop();
+      let entryEvent: any = null;
+      if (nearestBeforeStart) {
+        if (nearestBeforeStart.type === 'out') {
+          const firstInDuringMeeting = allEmpEvents.find(
+            e => new Date(e.time_created).getTime() >= tStartMs && 
+                 new Date(e.time_created).getTime() <= tEndMs && 
+                 e.type === 'in'
+          );
+          entryEvent = firstInDuringMeeting || null;
+        } else {
+          entryEvent = nearestBeforeStart;
+        }
+      } else {
+        const firstInDuringMeeting = allEmpEvents.find(
+          e => new Date(e.time_created).getTime() >= tStartMs && 
+               new Date(e.time_created).getTime() <= tEndMs && 
+               e.type === 'in'
+        );
+        entryEvent = firstInDuringMeeting || null;
+      }
+
+      // Exit Event logic
+      const nearestBeforeEnd = allEmpEvents.filter(
+        e => new Date(e.time_created).getTime() >= tStartMs && 
+             new Date(e.time_created).getTime() <= tEndMs
+      ).pop();
+      let exitEvent: any = null;
+      if (nearestBeforeEnd) {
+        if (nearestBeforeEnd.type === 'out') {
+          exitEvent = nearestBeforeEnd;
+        } else {
+          const firstOutAfterEnd = allEmpEvents.find(
+            e => new Date(e.time_created).getTime() > tEndMs && 
+                 e.type === 'out'
+          );
+          exitEvent = firstOutAfterEnd || null;
+        }
+      } else {
+        const firstOutAfterEnd = allEmpEvents.find(
+          e => new Date(e.time_created).getTime() > tEndMs && 
+               e.type === 'out'
+        );
+        exitEvent = firstOutAfterEnd || null;
+      }
+
+      const empName = empCheckin[0]?.full_name || empCheckout[0]?.full_name || '';
+      const empDocId = empCheckin[0]?.document_id || empCheckout[0]?.document_id || '';
+
+      attendance.push({
+        employeeId: empId,
+        employeeName: empName,
+        documentId: empDocId,
+        thoiGianVao: entryEvent && entryEvent.time_created ? extractLocalTimeStr(entryEvent.time_created) : null,
+        thoiGianRa: exitEvent && exitEvent.time_created ? extractLocalTimeStr(exitEvent.time_created) : null,
+        entryEvent,
+        exitEvent,
+      });
+    }
+
+    return { attendance };
+  }
+
+  /**
+   * Lấy báo cáo điểm danh theo khoảng thời gian (tuần / tháng).
+   * Trả về mảng nhân sự, mỗi nhân sự có:
+   *   - dailyLogs: mỗi ngày có thoiGianVao/Ra + entryEvent/exitEvent
+   *   - totalHours: tổng giờ công tích lũy cả khoảng
+   */
+  async getRangeAttendanceReport(startDateStr: string, endDateStr: string, areaNames: string[], groupId: string) {
+    const shiftStart = process.env.SHIFT_START_TIME || '07:30';
+    const shiftEnd = process.env.SHIFT_END_TIME || '17:00';
+    const shiftBufferHours = parseInt(process.env.SHIFT_BUFFER_HOURS || '2', 10);
+
+    const getOffsetTimeStr = (timeStr: string, offsetHours: number): string => {
+      const [h, m] = timeStr.split(':').map(Number);
+      let totalMinutes = h * 60 + (m || 0) + offsetHours * 60;
+      if (totalMinutes < 0) totalMinutes = 0;
+      if (totalMinutes >= 24 * 60) totalMinutes = 24 * 60 - 1;
+      const newH = Math.floor(totalMinutes / 60);
+      const newM = totalMinutes % 60;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(newH)}:${pad(newM)}:00`;
+    };
+
+    const startTimeOfDay = getOffsetTimeStr(shiftStart, -shiftBufferHours);
+    const endTimeOfDay = getOffsetTimeStr(shiftEnd, shiftBufferHours);
+
+    const queryStart = `${startDateStr} ${startTimeOfDay}`;
+    const queryEnd = `${endDateStr} ${endTimeOfDay}`;
+
+    // 1. Fetch location binds
+    const locations = await this.cms.location.findMany({
+      where: areaNames.length > 0 ? { name: { in: areaNames } } : {},
+    });
+    const locationIds = locations.map(loc => loc.id);
+    const binds = locationIds.length > 0
+      ? await this.cms.location_camera_bind.findMany({ where: { location_id: { in: locationIds } } })
+      : await this.cms.location_camera_bind.findMany();
+
+    const allCameraIds = binds.map(b => b.camera_id).filter(Boolean);
+    if (allCameraIds.length === 0) return { attendance: [] };
+
+    const checkinCameraIds = binds.filter(b => b.role.includes('checkin') || b.role.length === 0).map(b => b.camera_id).filter(Boolean);
+    const checkoutCameraIds = binds.filter(b => b.role.includes('checkout') || b.role.length === 0).map(b => b.camera_id).filter(Boolean);
+
+    // 2. Build SQL with optional group filter
+    let groupFilterSql = '';
+    const baseArgs: any[] = [queryStart, queryEnd, checkinCameraIds];
+    if (groupId && groupId !== 'All') {
+      groupFilterSql = `AND h.list_ids && $4::varchar[]`;
+      baseArgs.push([groupId]);
+    }
+
+    const sql = `
+      SELECT
+          es.object_id,
+          ev.create_time AS time_created,
+          h.full_name,
+          h.cropped_face_images,
+          es.camera_event_id,
+          ei_face.image_path AS face_image_path
+      FROM event_vms_parent ev
+      INNER JOIN event_statistic_parent es ON ev.source_id = es.id
+      INNER JOIN human_info h ON es.object_id = h.id
+      LEFT JOIN event_image_parent ei_face ON ev.source_id = ei_face.statistic_id AND ei_face.type = 4
+      WHERE
+          ev.create_time >= $1::timestamp
+          AND ev.create_time <= $2::timestamp
+          AND es.camera_event_id = ANY($3::varchar[])
+          ${groupFilterSql}
+          AND ev.is_valid = true
+          AND ev.is_deleted = false
+      ORDER BY ev.create_time ASC;
+    `;
+
+    const checkoutArgs = [...baseArgs];
+    checkoutArgs[2] = checkoutCameraIds;
+
+    const [checkinRaw, checkoutRaw] = await Promise.all([
+      checkinCameraIds.length > 0 ? this.lcms.$queryRawUnsafe<any[]>(sql, ...baseArgs) : Promise.resolve([]),
+      checkoutCameraIds.length > 0 ? this.lcms.$queryRawUnsafe<any[]>(sql, ...checkoutArgs) : Promise.resolve([]),
+    ]);
+
+    const mapEv = (e: any) => {
+      let face: string | null = null;
+      const buf = e.cropped_face_images;
+      if (buf) {
+        const raw = Buffer.isBuffer(buf) ? buf : (buf.data ? Buffer.from(buf.data) : null);
+        if (raw) face = `data:image/jpeg;base64,${raw.toString('base64')}`;
+      }
+      return { ...e, cropped_face_images: face ? [face] : [] };
+    };
+
+    const checkinEvents: any[] = checkinRaw.map(mapEv);
+    const checkoutEvents: any[] = checkoutRaw.map(mapEv);
+
+    // 3. Helper: for a given empId + dateStr, find entryEvent (first in) and exitEvent (last out)
+    const TZ_OFFSET_MS = 7 * 60 * 60 * 1000;
+    const parseLocalToUTCMs = (ds: string, ts: string) => new Date(`${ds}T${ts}:00`).getTime() - TZ_OFFSET_MS;
+
+    const calcWorkHours = (inStr: string | null, outStr: string | null): number => {
+      if (!inStr || !outStr) return 0;
+      const [ih, im, is_] = inStr.split(':').map(Number);
+      const [oh, om, os] = outStr.split(':').map(Number);
+      const inSec = ih * 3600 + (im || 0) * 60 + (is_ || 0);
+      const outSec = oh * 3600 + (om || 0) * 60 + (os || 0);
+      if (outSec <= inSec) return 0;
+      let diff = outSec - inSec - 5400; // minus 1.5h lunch
+      diff = Math.max(0, diff);
+      return Math.min(8, diff / 3600);
+    };
+
+    // 4. Enumerate all dates in range
+    const allDates: string[] = [];
+    const cur = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    while (cur <= end) {
+      allDates.push(cur.toISOString().split('T')[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // 5. Collect all employee IDs from events
+    const allEmpIds = new Set<string>();
+    for (const e of checkinEvents) allEmpIds.add(e.object_id);
+    for (const e of checkoutEvents) allEmpIds.add(e.object_id);
+
+    const attendance: any[] = [];
+
+    for (const empId of allEmpIds) {
+      const empIn = checkinEvents.filter(e => e.object_id === empId);
+      const empOut = checkoutEvents.filter(e => e.object_id === empId);
+      const empName = empIn[0]?.full_name || empOut[0]?.full_name || '';
+
+      let totalHours = 0;
+      const dailyLogs: any[] = [];
+
+      for (const ds of allDates) {
+        const tStartMs = parseLocalToUTCMs(ds, shiftStart);
+        const tEndMs = parseLocalToUTCMs(ds, shiftEnd);
+
+        const dayIn = empIn.filter(e => {
+          const t = new Date(e.time_created).getTime();
+          return t >= tStartMs - shiftBufferHours * 3600000 && t <= tEndMs + shiftBufferHours * 3600000;
+        }).sort((a, b) => new Date(a.time_created).getTime() - new Date(b.time_created).getTime());
+
+        const dayOut = empOut.filter(e => {
+          const t = new Date(e.time_created).getTime();
+          return t >= tStartMs - shiftBufferHours * 3600000 && t <= tEndMs + shiftBufferHours * 3600000;
+        }).sort((a, b) => new Date(b.time_created).getTime() - new Date(a.time_created).getTime());
+
+        const entryEvent = dayIn[0] || null;
+        const exitEvent = dayOut[0] || null;
+
+        const inStr = entryEvent ? this.formatDateToLocalString(entryEvent.time_created).split('-')[1] : null;
+        const outStr = exitEvent ? this.formatDateToLocalString(exitEvent.time_created).split('-')[1] : null;
+        const hours = calcWorkHours(inStr, outStr);
+        totalHours += hours;
+
+        dailyLogs.push({
+          date: ds,
+          thoiGianVao: inStr,
+          thoiGianRa: outStr,
+          hours,
+          entryEvent,
+          exitEvent,
+        });
+      }
+
+      attendance.push({
+        employeeId: empId,
+        employeeName: empName,
+        totalHours: Math.min(totalHours, allDates.length * 8),
+        dailyLogs,
+      });
+    }
+
+    return { attendance };
+  }
 }
