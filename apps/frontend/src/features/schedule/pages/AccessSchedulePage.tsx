@@ -473,7 +473,7 @@ export const AccessSchedulePage = () => {
               </button>
 
               {/* Tab 2: Quản lý lịch chấm công */}
-              <button
+              {/* <button
                 id="schedule-tab-btn-attendance"
                 onClick={() => setActiveScheduleSubTab('attendance-schedule')}
                 className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center space-x-2 transition-all duration-200 cursor-pointer ${activeScheduleSubTab === 'attendance-schedule'
@@ -483,7 +483,7 @@ export const AccessSchedulePage = () => {
               >
                 <Calendar size={14} />
                 <span>Quản lý lịch chấm công</span>
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
@@ -492,126 +492,63 @@ export const AccessSchedulePage = () => {
         {activeScheduleSubTab === 'attendance-schedule' ? (
           <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-5 relative min-h-[400px]">
             <div className={`flex flex-col space-y-5 flex-1 transition-all duration-300 ${!showAttendanceScheduleDemo ? 'blur-sm pointer-events-none select-none' : ''}`}>
-            {/* REPORT BUILDER-LIKE CONTROLS GRID */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* REPORT BUILDER-LIKE CONTROLS GRID */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-              {/* LEFT PANEL: CẤU HÌNH KHU VỰC */}
-              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-5 shadow-xl flex flex-col justify-between relative">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/60 flex items-center space-x-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#00a2e8]" />
-                    <span>Cấu hình khu vực</span>
-                  </h4>
+                {/* LEFT PANEL: CẤU HÌNH KHU VỰC */}
+                <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-5 shadow-xl flex flex-col justify-between relative">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/60 flex items-center space-x-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#00a2e8]" />
+                      <span>Cấu hình khu vực</span>
+                    </h4>
 
-                  <div className="space-y-4">
-                    {/* Multiselect Khu vực */}
-                    <div className="space-y-1.5 text-left relative">
-                      <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Khu vực giám sát</label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          id="sch-areas-dropdown-btn"
-                          onClick={() => {
-                            setIsSchAreasOpen(!isSchAreasOpen);
-                            setIsSchDisplayOpen(false);
-                            setIsSchTypeOpen(false);
-                            setIsSchGroupsOpen(false);
-                          }}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none min-h-[42px] cursor-pointer"
-                        >
-                          <div className="flex flex-wrap gap-1.5 items-center max-w-[90%] py-0.5">
-                            {scheduleSelectedAreas.length === 0 ? (
-                              <span className="text-slate-400">Chọn khu vực giám sát...</span>
-                            ) : (
-                              scheduleSelectedAreas.map(aName => (
-                                <span key={aName} className="bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20 px-2 py-0.5 rounded text-[10px] font-bold">
-                                  {aName}
-                                </span>
-                              ))
-                            )}
-                          </div>
-                          <ChevronDown size={14} className="text-slate-400 shrink-0" />
-                        </button>
-                        {isSchAreasOpen && (
-                          <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsSchAreasOpen(false)} />
-                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
-                              {['Checkin Area', 'Checkout Area', 'Lobby Area', 'Server Room'].map((areaOption) => {
-                                const isSelected = scheduleSelectedAreas.includes(areaOption);
-                                return (
-                                  <button
-                                    key={areaOption}
-                                    type="button"
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setScheduleSelectedAreas(scheduleSelectedAreas.filter(a => a !== areaOption));
-                                      } else {
-                                        setScheduleSelectedAreas([...scheduleSelectedAreas, areaOption]);
-                                      }
-                                    }}
-                                    className="w-full text-left px-4 py-2.5 text-xs transition-colors hover:bg-[#20212a] flex items-center space-x-3 text-slate-300 cursor-pointer"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      readOnly
-                                      className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
-                                    />
-                                    <span className={isSelected ? 'text-[#00a2e8] font-semibold' : ''}>{areaOption}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Multiselect Áp dụng cho Nhóm */}
-                    <div className="space-y-1.5 text-left relative">
-                      <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Áp dụng cho Nhóm</label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          id="sch-groups-dropdown-btn"
-                          onClick={() => {
-                            setIsSchGroupsOpen(!isSchGroupsOpen);
-                            setIsSchAreasOpen(false);
-                            setIsSchDisplayOpen(false);
-                            setIsSchTypeOpen(false);
-                          }}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none min-h-[42px] cursor-pointer"
-                        >
-                          <div className="flex flex-wrap gap-1.5 items-center max-w-[90%] py-0.5">
-                            {computedSelectedGroups.length === 0 ? (
-                              <span className="text-slate-400">Chọn nhóm nhân viên...</span>
-                            ) : (
-                              computedSelectedGroups.map(gid => {
-                                const g = humanGroups.find(hg => hg.id === gid);
-                                return (
-                                  <span key={gid} className="bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20 px-2 py-0.5 rounded text-[10px] font-bold">
-                                    {g?.name || gid}
-                                  </span>
-                                );
-                              })
-                            )}
-                          </div>
-                          <ChevronDown size={14} className="text-slate-400 shrink-0" />
-                        </button>
-                        {isSchGroupsOpen && (
-                          <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsSchGroupsOpen(false)} />
-                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden max-h-56 overflow-y-auto">
-                              {humanGroups.length === 0 ? (
-                                <div className="px-4 py-3 text-xs text-slate-500 italic">Chưa có nhóm nhân viên nào.</div>
+                    <div className="space-y-4">
+                      {/* Multiselect Khu vực */}
+                      <div className="space-y-1.5 text-left relative">
+                        <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Khu vực giám sát</label>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            id="sch-areas-dropdown-btn"
+                            onClick={() => {
+                              setIsSchAreasOpen(!isSchAreasOpen);
+                              setIsSchDisplayOpen(false);
+                              setIsSchTypeOpen(false);
+                              setIsSchGroupsOpen(false);
+                            }}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none min-h-[42px] cursor-pointer"
+                          >
+                            <div className="flex flex-wrap gap-1.5 items-center max-w-[90%] py-0.5">
+                              {scheduleSelectedAreas.length === 0 ? (
+                                <span className="text-slate-400">Chọn khu vực giám sát...</span>
                               ) : (
-                                humanGroups.map((groupOption) => {
-                                  const isSelected = computedSelectedGroups.includes(groupOption.id);
+                                scheduleSelectedAreas.map(aName => (
+                                  <span key={aName} className="bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20 px-2 py-0.5 rounded text-[10px] font-bold">
+                                    {aName}
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                            <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                          </button>
+                          {isSchAreasOpen && (
+                            <>
+                              <div className="fixed inset-0 z-30" onClick={() => setIsSchAreasOpen(false)} />
+                              <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
+                                {['Checkin Area', 'Checkout Area', 'Lobby Area', 'Server Room'].map((areaOption) => {
+                                  const isSelected = scheduleSelectedAreas.includes(areaOption);
                                   return (
                                     <button
-                                      key={groupOption.id}
+                                      key={areaOption}
                                       type="button"
-                                      onClick={() => toggleGroupSelection(groupOption.id)}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setScheduleSelectedAreas(scheduleSelectedAreas.filter(a => a !== areaOption));
+                                        } else {
+                                          setScheduleSelectedAreas([...scheduleSelectedAreas, areaOption]);
+                                        }
+                                      }}
                                       className="w-full text-left px-4 py-2.5 text-xs transition-colors hover:bg-[#20212a] flex items-center space-x-3 text-slate-300 cursor-pointer"
                                     >
                                       <input
@@ -620,555 +557,737 @@ export const AccessSchedulePage = () => {
                                         readOnly
                                         className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
                                       />
-                                      <span className={isSelected ? 'text-[#00a2e8] font-semibold' : ''}>{groupOption.name}</span>
+                                      <span className={isSelected ? 'text-[#00a2e8] font-semibold' : ''}>{areaOption}</span>
                                     </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Multiselect Áp dụng cho Nhóm */}
+                      <div className="space-y-1.5 text-left relative">
+                        <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Áp dụng cho Nhóm</label>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            id="sch-groups-dropdown-btn"
+                            onClick={() => {
+                              setIsSchGroupsOpen(!isSchGroupsOpen);
+                              setIsSchAreasOpen(false);
+                              setIsSchDisplayOpen(false);
+                              setIsSchTypeOpen(false);
+                            }}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none min-h-[42px] cursor-pointer"
+                          >
+                            <div className="flex flex-wrap gap-1.5 items-center max-w-[90%] py-0.5">
+                              {computedSelectedGroups.length === 0 ? (
+                                <span className="text-slate-400">Chọn nhóm nhân viên...</span>
+                              ) : (
+                                computedSelectedGroups.map(gid => {
+                                  const g = humanGroups.find(hg => hg.id === gid);
+                                  return (
+                                    <span key={gid} className="bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20 px-2 py-0.5 rounded text-[10px] font-bold">
+                                      {g?.name || gid}
+                                    </span>
                                   );
                                 })
                               )}
                             </div>
-                          </>
-                        )}
+                            <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                          </button>
+                          {isSchGroupsOpen && (
+                            <>
+                              <div className="fixed inset-0 z-30" onClick={() => setIsSchGroupsOpen(false)} />
+                              <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden max-h-56 overflow-y-auto">
+                                {humanGroups.length === 0 ? (
+                                  <div className="px-4 py-3 text-xs text-slate-500 italic">Chưa có nhóm nhân viên nào.</div>
+                                ) : (
+                                  humanGroups.map((groupOption) => {
+                                    const isSelected = computedSelectedGroups.includes(groupOption.id);
+                                    return (
+                                      <button
+                                        key={groupOption.id}
+                                        type="button"
+                                        onClick={() => toggleGroupSelection(groupOption.id)}
+                                        className="w-full text-left px-4 py-2.5 text-xs transition-colors hover:bg-[#20212a] flex items-center space-x-3 text-slate-300 cursor-pointer"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          readOnly
+                                          className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                                        />
+                                        <span className={isSelected ? 'text-[#00a2e8] font-semibold' : ''}>{groupOption.name}</span>
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* RIGHT PANEL: THIẾT LẬP THỜI GIAN */}
-              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-4">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/60 flex items-center space-x-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#00a2e8]" />
-                    <span>Thiết lập ca & thời gian</span>
-                  </h4>
+                {/* RIGHT PANEL: THIẾT LẬP THỜI GIAN */}
+                <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-4">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/60 flex items-center space-x-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#00a2e8]" />
+                      <span>Thiết lập ca & thời gian</span>
+                    </h4>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Từ giờ */}
-                    <div className="space-y-1.5 text-left">
-                      <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Từ (giờ)</label>
-                      <input
-                        type="time"
-                        value={scheduleStartTime}
-                        onChange={(e) => setScheduleStartTime(e.target.value)}
-                        className="w-full bg-[#1c1d26] border border-[#2d2f3c] text-white rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-[#00a2e8] h-[42px] font-mono cursor-pointer"
-                      />
-                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Từ giờ */}
+                      <div className="space-y-1.5 text-left">
+                        <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Từ (giờ)</label>
+                        <input
+                          type="time"
+                          value={scheduleStartTime}
+                          onChange={(e) => setScheduleStartTime(e.target.value)}
+                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] text-white rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-[#00a2e8] h-[42px] font-mono cursor-pointer"
+                        />
+                      </div>
 
-                    {/* Đến giờ */}
-                    <div className="space-y-1.5 text-left">
-                      <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Đến (giờ)</label>
-                      <input
-                        type="time"
-                        value={scheduleEndTime}
-                        onChange={(e) => setScheduleEndTime(e.target.value)}
-                        className="w-full bg-[#1c1d26] border border-[#2d2f3c] text-white rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-[#00a2e8] h-[42px] font-mono cursor-pointer"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Loại Dropdown & Action Button */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    {/* Loại dropdown */}
-                    <div className="space-y-1.5 text-left relative">
-                      <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Loại</label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsSchTypeOpen(!isSchTypeOpen);
-                            setIsSchDisplayOpen(false);
-                            setIsSchAreasOpen(false);
-                          }}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px] cursor-pointer"
-                        >
-                          <span className="font-semibold text-slate-200">{scheduleType} (Mặc định)</span>
-                          <ChevronDown size={14} className="text-slate-400" />
-                        </button>
-                        {isSchTypeOpen && (
-                          <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsSchTypeOpen(false)} />
-                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
-                              {['Chấm công', 'Tăng ca', 'Nghỉ phép'].map((typeOption) => (
-                                <button
-                                  key={typeOption}
-                                  type="button"
-                                  onClick={() => {
-                                    setScheduleType(typeOption);
-                                    setIsSchTypeOpen(false);
-                                  }}
-                                  className={`w-full text-left px-4 py-2.5 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${scheduleType === typeOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
-                                    }`}
-                                >
-                                  <span>{typeOption} {typeOption === 'Chấm công' ? '(Mặc định)' : ''}</span>
-                                  {scheduleType === typeOption && <Check size={14} className="text-[#00a2e8]" />}
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
+                      {/* Đến giờ */}
+                      <div className="space-y-1.5 text-left">
+                        <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Đến (giờ)</label>
+                        <input
+                          type="time"
+                          value={scheduleEndTime}
+                          onChange={(e) => setScheduleEndTime(e.target.value)}
+                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] text-white rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-[#00a2e8] h-[42px] font-mono cursor-pointer"
+                        />
                       </div>
                     </div>
 
-                    {/* Button "Điền vào bảng" */}
-                    {/* Button "Điền vào bảng" + Checkbox Trừ cuối tuần */}
-                    <div className="flex items-end space-x-3">
-                      {/* Checkbox Trừ ngày cuối tuần */}
-                      <label className="flex items-center space-x-2 cursor-pointer select-none h-[42px]">
-                        <input
-                          type="checkbox"
-                          checked={excludeWeekends}
-                          onChange={(e) => setExcludeWeekends(e.target.checked)}
-                          className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
-                        />
-                        <span className="text-[10px] text-slate-300 font-semibold whitespace-nowrap">Trừ ngày cuối tuần</span>
-                      </label>
+                    {/* Loại Dropdown & Action Button */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      {/* Loại dropdown */}
+                      <div className="space-y-1.5 text-left relative">
+                        <label className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Loại</label>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSchTypeOpen(!isSchTypeOpen);
+                              setIsSchDisplayOpen(false);
+                              setIsSchAreasOpen(false);
+                            }}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px] cursor-pointer"
+                          >
+                            <span className="font-semibold text-slate-200">{scheduleType} (Mặc định)</span>
+                            <ChevronDown size={14} className="text-slate-400" />
+                          </button>
+                          {isSchTypeOpen && (
+                            <>
+                              <div className="fixed inset-0 z-30" onClick={() => setIsSchTypeOpen(false)} />
+                              <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
+                                {['Chấm công', 'Tăng ca', 'Nghỉ phép'].map((typeOption) => (
+                                  <button
+                                    key={typeOption}
+                                    type="button"
+                                    onClick={() => {
+                                      setScheduleType(typeOption);
+                                      setIsSchTypeOpen(false);
+                                    }}
+                                    className={`w-full text-left px-4 py-2.5 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${scheduleType === typeOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
+                                      }`}
+                                  >
+                                    <span>{typeOption} {typeOption === 'Chấm công' ? '(Mặc định)' : ''}</span>
+                                    {scheduleType === typeOption && <Check size={14} className="text-[#00a2e8]" />}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
 
-                      <button
-                        onClick={() => {
-                          // Construct active base list from humanGroups if populated, otherwise scheduleSavedData
-                          const currentList = humanGroups.length > 0
-                            ? humanGroups.map(group => {
-                              const source = scheduleSavedData;
-                              const match = source.find(s => s.name === group.name || s.id === group.id);
-                              return {
-                                id: group.id,
-                                name: group.name,
-                                days: match?.days || {
-                                  '2026-07-10': { assigned: false },
-                                  '2026-07-11': { assigned: false },
-                                  '2026-07-12': { assigned: false },
-                                  '2026-07-13': { assigned: false },
-                                  '2026-07-14': { assigned: false },
-                                  '2026-07-15': { assigned: false },
-                                  '2026-07-16': { assigned: false },
-                                }
-                              };
-                            })
-                            : scheduleSavedData;
+                      {/* Button "Điền vào bảng" */}
+                      {/* Button "Điền vào bảng" + Checkbox Trừ cuối tuần */}
+                      <div className="flex items-end space-x-3">
+                        {/* Checkbox Trừ ngày cuối tuần */}
+                        <label className="flex items-center space-x-2 cursor-pointer select-none h-[42px]">
+                          <input
+                            type="checkbox"
+                            checked={excludeWeekends}
+                            onChange={(e) => setExcludeWeekends(e.target.checked)}
+                            className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                          />
+                          <span className="text-[10px] text-slate-300 font-semibold whitespace-nowrap">Trừ ngày cuối tuần</span>
+                        </label>
 
-                          const dataToModify = JSON.parse(JSON.stringify(currentList));
-                          let datesToApply: string[] = [];
+                        <button
+                          onClick={() => {
+                            // Construct active base list from humanGroups if populated, otherwise scheduleSavedData
+                            const currentList = humanGroups.length > 0
+                              ? humanGroups.map(group => {
+                                const source = scheduleSavedData;
+                                const match = source.find(s => s.name === group.name || s.id === group.id);
+                                return {
+                                  id: group.id,
+                                  name: group.name,
+                                  days: match?.days || {
+                                    '2026-07-10': { assigned: false },
+                                    '2026-07-11': { assigned: false },
+                                    '2026-07-12': { assigned: false },
+                                    '2026-07-13': { assigned: false },
+                                    '2026-07-14': { assigned: false },
+                                    '2026-07-15': { assigned: false },
+                                    '2026-07-16': { assigned: false },
+                                  }
+                                };
+                              })
+                              : scheduleSavedData;
 
-                          if (scheduleDisplay === 'Ngày') {
-                            datesToApply = [scheduleCalendarDate];
-                          } else if (scheduleDisplay === 'Tuần') {
-                            const start = new Date(scheduleCalendarDate);
-                            for (let i = 0; i < 7; i++) {
-                              const d = new Date(start);
-                              d.setDate(start.getDate() + i);
-                              const yyyy = d.getFullYear();
-                              const mm = String(d.getMonth() + 1).padStart(2, '0');
-                              const dd = String(d.getDate()).padStart(2, '0');
-                              datesToApply.push(`${yyyy}-${mm}-${dd}`);
-                            }
-                          } else if (scheduleDisplay === 'Tháng') {
-                            const start = new Date(scheduleCalendarDate);
-                            for (let i = 0; i < 30; i++) {
-                              const d = new Date(start);
-                              d.setDate(start.getDate() + i);
-                              const yyyy = d.getFullYear();
-                              const mm = String(d.getMonth() + 1).padStart(2, '0');
-                              const dd = String(d.getDate()).padStart(2, '0');
-                              datesToApply.push(`${yyyy}-${mm}-${dd}`);
-                            }
-                          } else { // Năm
-                            const start = new Date(scheduleCalendarDate);
-                            for (let i = 0; i < 90; i++) {
-                              const d = new Date(start);
-                              d.setDate(start.getDate() + i);
-                              const yyyy = d.getFullYear();
-                              const mm = String(d.getMonth() + 1).padStart(2, '0');
-                              const dd = String(d.getDate()).padStart(2, '0');
-                              datesToApply.push(`${yyyy}-${mm}-${dd}`);
-                            }
-                          }
+                            const dataToModify = JSON.parse(JSON.stringify(currentList));
+                            let datesToApply: string[] = [];
 
-                          // Loại bỏ T7/CN nếu checkbox "Trừ ngày cuối tuần" được tick
-                          if (excludeWeekends) {
-                            datesToApply = datesToApply.filter(dateStr => {
-                              const dayOfWeek = new Date(dateStr).getDay();
-                              return dayOfWeek !== 0 && dayOfWeek !== 6; // 0=CN, 6=T7
-                            });
-                          }
-
-                          const isAnyCellSelected = Object.values(scheduleSelectedCells).some(dates => dates.length > 0);
-
-                          dataToModify.forEach((emp: any) => {
-                            datesToApply.forEach((dateStr) => {
-                              if (isAnyCellSelected) {
-                                if (!(scheduleSelectedCells[emp.id] || []).includes(dateStr)) {
-                                  return;
-                                }
-                              } else {
-                                if (computedSelectedGroups.length > 0 && !computedSelectedGroups.includes(emp.id)) {
-                                  return;
-                                }
+                            if (scheduleDisplay === 'Ngày') {
+                              datesToApply = [scheduleCalendarDate];
+                            } else if (scheduleDisplay === 'Tuần') {
+                              const start = new Date(scheduleCalendarDate);
+                              for (let i = 0; i < 7; i++) {
+                                const d = new Date(start);
+                                d.setDate(start.getDate() + i);
+                                const yyyy = d.getFullYear();
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                datesToApply.push(`${yyyy}-${mm}-${dd}`);
                               }
+                            } else if (scheduleDisplay === 'Tháng') {
+                              const start = new Date(scheduleCalendarDate);
+                              for (let i = 0; i < 30; i++) {
+                                const d = new Date(start);
+                                d.setDate(start.getDate() + i);
+                                const yyyy = d.getFullYear();
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                datesToApply.push(`${yyyy}-${mm}-${dd}`);
+                              }
+                            } else { // Năm
+                              const start = new Date(scheduleCalendarDate);
+                              for (let i = 0; i < 90; i++) {
+                                const d = new Date(start);
+                                d.setDate(start.getDate() + i);
+                                const yyyy = d.getFullYear();
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                datesToApply.push(`${yyyy}-${mm}-${dd}`);
+                              }
+                            }
 
-                              setCellForType(emp, dateStr, scheduleType, {
-                                assigned: true,
-                                shiftName: 'Ca hành chính',
-                                startTime: scheduleStartTime,
-                                endTime: scheduleEndTime,
-                                type: scheduleType,
-                                areas: [...scheduleSelectedAreas]
+                            // Loại bỏ T7/CN nếu checkbox "Trừ ngày cuối tuần" được tick
+                            if (excludeWeekends) {
+                              datesToApply = datesToApply.filter(dateStr => {
+                                const dayOfWeek = new Date(dateStr).getDay();
+                                return dayOfWeek !== 0 && dayOfWeek !== 6; // 0=CN, 6=T7
+                              });
+                            }
+
+                            const isAnyCellSelected = Object.values(scheduleSelectedCells).some(dates => dates.length > 0);
+
+                            dataToModify.forEach((emp: any) => {
+                              datesToApply.forEach((dateStr) => {
+                                if (isAnyCellSelected) {
+                                  if (!(scheduleSelectedCells[emp.id] || []).includes(dateStr)) {
+                                    return;
+                                  }
+                                } else {
+                                  if (computedSelectedGroups.length > 0 && !computedSelectedGroups.includes(emp.id)) {
+                                    return;
+                                  }
+                                }
+
+                                setCellForType(emp, dateStr, scheduleType, {
+                                  assigned: true,
+                                  shiftName: 'Ca hành chính',
+                                  startTime: scheduleStartTime,
+                                  endTime: scheduleEndTime,
+                                  type: scheduleType,
+                                  areas: [...scheduleSelectedAreas]
+                                });
                               });
                             });
-                          });
 
-                          setSchedulePreviewData(dataToModify);
-                          setIsFillingTable(true);
-                        }}
-                        className="w-full bg-[#0078d7] hover:bg-[#006fca] text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center space-x-2 transition-all duration-200 active:scale-95 shadow-md shadow-[#0078d7]/20 cursor-pointer h-[42px] text-xs"
-                      >
-                        <span>Điền vào bảng</span>
-                      </button>
+                            setSchedulePreviewData(dataToModify);
+                            setIsFillingTable(true);
+                          }}
+                          className="w-full bg-[#0078d7] hover:bg-[#006fca] text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center space-x-2 transition-all duration-200 active:scale-95 shadow-md shadow-[#0078d7]/20 cursor-pointer h-[42px] text-xs"
+                        >
+                          <span>Điền vào bảng</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* INTERACTIVE CALENDAR TABLE CONTAINER */}
-            <div className="bg-[#14151b] border border-[#21232d] rounded-2xl overflow-hidden shadow-2xl">
-              <div className="p-4 bg-[#181922] border-b border-[#21232d] flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 rounded-full bg-[#00a2e8]" />
-                    <h4 className="text-xs font-bold text-slate-200 tracking-wide uppercase">Lịch Biểu Nhân Sự</h4>
-                  </div>
-
-                  {/* Dropdown Hiển thị moved here */}
-                  <div className="relative text-left z-20">
-                    <button
-                      type="button"
-                      id="sch-display-dropdown-btn"
-                      onClick={() => {
-                        setIsSchDisplayOpen(!isSchDisplayOpen);
-                        setIsSchAreasOpen(false);
-                        setIsSchTypeOpen(false);
-                        setIsSchGroupsOpen(false);
-                      }}
-                      className="bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-3 py-1.5 text-xs text-white flex items-center space-x-2 transition-all focus:outline-none h-[32px] cursor-pointer"
-                    >
-                      <span className="font-semibold text-slate-300">Hiển thị: {scheduleDisplay} {scheduleDisplay === 'Ngày' ? '(Mặc định)' : ''}</span>
-                      <ChevronDown size={12} className="text-slate-400" />
-                    </button>
-                    {isSchDisplayOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setIsSchDisplayOpen(false)} />
-                        <div className="absolute left-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden w-[180px]">
-                          {(['Ngày', 'Tuần', 'Tháng', 'Năm'] as const).map((opt) => (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => {
-                                setScheduleDisplay(opt);
-                                setIsSchDisplayOpen(false);
-                                if (opt === 'Tuần') {
-                                  setScheduleWeekNumber(getISOWeekNumber(scheduleCalendarDate));
-                                }
-                              }}
-                              className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${scheduleDisplay === opt ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
-                                }`}
-                            >
-                              <span>{opt} {opt === 'Ngày' ? '(Mặc định)' : ''}</span>
-                              {scheduleDisplay === opt && <Check size={12} className="text-[#00a2e8]" />}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Week number picker - chỉ hiển thị khi mode Tuần */}
-                  {scheduleDisplay === 'Tuần' && (
+              {/* INTERACTIVE CALENDAR TABLE CONTAINER */}
+              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 bg-[#181922] border-b border-[#21232d] flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
-                      <span className="text-[11px] text-slate-400 font-semibold">Tuần</span>
-                      <div className="flex items-center space-x-1 bg-[#1c1d26] border border-[#2d2f3c] rounded-lg overflow-hidden h-[32px]">
-                        <button
-                          type="button"
-                          onClick={() => setScheduleWeekNumber(Math.max(1, scheduleWeekNumber - 1))}
-                          className="px-1.5 py-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] transition-colors"
-                          title="Tuần trước"
-                        >
-                          <ChevronDown size={14} className="rotate-90" />
-                        </button>
+                      <span className="w-2 h-2 rounded-full bg-[#00a2e8]" />
+                      <h4 className="text-xs font-bold text-slate-200 tracking-wide uppercase">Lịch Biểu Nhân Sự</h4>
+                    </div>
+
+                    {/* Dropdown Hiển thị moved here */}
+                    <div className="relative text-left z-20">
+                      <button
+                        type="button"
+                        id="sch-display-dropdown-btn"
+                        onClick={() => {
+                          setIsSchDisplayOpen(!isSchDisplayOpen);
+                          setIsSchAreasOpen(false);
+                          setIsSchTypeOpen(false);
+                          setIsSchGroupsOpen(false);
+                        }}
+                        className="bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-3 py-1.5 text-xs text-white flex items-center space-x-2 transition-all focus:outline-none h-[32px] cursor-pointer"
+                      >
+                        <span className="font-semibold text-slate-300">Hiển thị: {scheduleDisplay} {scheduleDisplay === 'Ngày' ? '(Mặc định)' : ''}</span>
+                        <ChevronDown size={12} className="text-slate-400" />
+                      </button>
+                      {isSchDisplayOpen && (
+                        <>
+                          <div className="fixed inset-0 z-30" onClick={() => setIsSchDisplayOpen(false)} />
+                          <div className="absolute left-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden w-[180px]">
+                            {(['Ngày', 'Tuần', 'Tháng', 'Năm'] as const).map((opt) => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => {
+                                  setScheduleDisplay(opt);
+                                  setIsSchDisplayOpen(false);
+                                  if (opt === 'Tuần') {
+                                    setScheduleWeekNumber(getISOWeekNumber(scheduleCalendarDate));
+                                  }
+                                }}
+                                className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${scheduleDisplay === opt ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
+                                  }`}
+                              >
+                                <span>{opt} {opt === 'Ngày' ? '(Mặc định)' : ''}</span>
+                                {scheduleDisplay === opt && <Check size={12} className="text-[#00a2e8]" />}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Week number picker - chỉ hiển thị khi mode Tuần */}
+                    {scheduleDisplay === 'Tuần' && (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[11px] text-slate-400 font-semibold">Tuần</span>
+                        <div className="flex items-center space-x-1 bg-[#1c1d26] border border-[#2d2f3c] rounded-lg overflow-hidden h-[32px]">
+                          <button
+                            type="button"
+                            onClick={() => setScheduleWeekNumber(Math.max(1, scheduleWeekNumber - 1))}
+                            className="px-1.5 py-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] transition-colors"
+                            title="Tuần trước"
+                          >
+                            <ChevronDown size={14} className="rotate-90" />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={53}
+                            value={scheduleWeekNumber}
+                            onChange={(e) => {
+                              const val = Math.max(1, Math.min(53, parseInt(e.target.value, 10) || 1));
+                              setScheduleWeekNumber(val);
+                            }}
+                            className="w-12 bg-transparent text-xs text-white text-center font-mono focus:outline-none [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setScheduleWeekNumber(Math.min(53, scheduleWeekNumber + 1))}
+                            className="px-1.5 py-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] transition-colors"
+                            title="Tuần sau"
+                          >
+                            <ChevronDown size={14} className="-rotate-90" />
+                          </button>
+                        </div>
+                        <span className="text-[11px] text-slate-500 font-mono">/{new Date(scheduleCalendarDate).getFullYear()}</span>
                         <input
                           type="number"
-                          min={1}
-                          max={53}
-                          value={scheduleWeekNumber}
+                          min={2000}
+                          max={2100}
+                          value={new Date(scheduleCalendarDate).getFullYear()}
                           onChange={(e) => {
-                            const val = Math.max(1, Math.min(53, parseInt(e.target.value, 10) || 1));
-                            setScheduleWeekNumber(val);
+                            const year = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
+                            const monday = getMondayOfWeek(year, scheduleWeekNumber);
+                            setScheduleCalendarDate(monday);
                           }}
-                          className="w-12 bg-transparent text-xs text-white text-center font-mono focus:outline-none [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
+                          className="w-16 bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1 text-xs text-white text-center font-mono focus:outline-none h-[32px] [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
                         />
-                        <button
-                          type="button"
-                          onClick={() => setScheduleWeekNumber(Math.min(53, scheduleWeekNumber + 1))}
-                          className="px-1.5 py-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] transition-colors"
-                          title="Tuần sau"
-                        >
-                          <ChevronDown size={14} className="-rotate-90" />
-                        </button>
                       </div>
-                      <span className="text-[11px] text-slate-500 font-mono">/{new Date(scheduleCalendarDate).getFullYear()}</span>
-                      <input
-                        type="number"
-                        min={2000}
-                        max={2100}
-                        value={new Date(scheduleCalendarDate).getFullYear()}
-                        onChange={(e) => {
-                          const year = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
-                          const monday = getMondayOfWeek(year, scheduleWeekNumber);
-                          setScheduleCalendarDate(monday);
-                        }}
-                        className="w-16 bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1 text-xs text-white text-center font-mono focus:outline-none h-[32px] [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
-                      />
+                    )}
+                  </div>
+                  {isFillingTable && (
+                    <div className="flex items-center space-x-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Preview Mode</span>
                     </div>
                   )}
                 </div>
-                {isFillingTable && (
-                  <div className="flex items-center space-x-1.5 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Preview Mode</span>
-                  </div>
-                )}
-              </div>
 
-              <div className="w-full overflow-x-auto">
-                {(() => {
-                  const baseList = isFillingTable && schedulePreviewData ? schedulePreviewData : scheduleSavedData;
-                  const activeSchedules = humanGroups.length > 0
-                    ? humanGroups.map(group => {
-                      const match = baseList.find(s => s.name === group.name || s.id === group.id);
-                      return {
-                        id: group.id,
-                        name: group.name,
-                        days: match?.days || {
-                          '2026-07-10': { assigned: false },
-                          '2026-07-11': { assigned: false },
-                          '2026-07-12': { assigned: false },
-                          '2026-07-13': { assigned: false },
-                          '2026-07-14': { assigned: false },
-                          '2026-07-15': { assigned: false },
-                          '2026-07-16': { assigned: false },
-                        }
-                      };
-                    })
-                    : baseList;
+                <div className="w-full overflow-x-auto">
+                  {(() => {
+                    const baseList = isFillingTable && schedulePreviewData ? schedulePreviewData : scheduleSavedData;
+                    const activeSchedules = humanGroups.length > 0
+                      ? humanGroups.map(group => {
+                        const match = baseList.find(s => s.name === group.name || s.id === group.id);
+                        return {
+                          id: group.id,
+                          name: group.name,
+                          days: match?.days || {
+                            '2026-07-10': { assigned: false },
+                            '2026-07-11': { assigned: false },
+                            '2026-07-12': { assigned: false },
+                            '2026-07-13': { assigned: false },
+                            '2026-07-14': { assigned: false },
+                            '2026-07-15': { assigned: false },
+                            '2026-07-16': { assigned: false },
+                          }
+                        };
+                      })
+                      : baseList;
 
-                  // RENDER TABLE ACCORDING TO DISPLAY VIEW MODE
-                  if (scheduleDisplay === 'Tuần') {
-                    // Compute week dates starting from scheduleCalendarDate
-                    const weekDays = [];
-                    const start = new Date(scheduleCalendarDate);
-                    for (let i = 0; i < 7; i++) {
-                      const d = new Date(start);
-                      d.setDate(start.getDate() + i);
-                      const mm = String(d.getMonth() + 1).padStart(2, '0');
-                      const dd = String(d.getDate()).padStart(2, '0');
-                      const yyyy = d.getFullYear();
-                      const dayOfWeek = d.getDay();
-                      const dayOfWeekLabel = dayOfWeek === 0 ? 'CN' : `Thứ ${dayOfWeek + 1}`;
-                      weekDays.push({
-                        dateStr: `${yyyy}-${mm}-${dd}`,
-                        label: `${dayOfWeekLabel} - ${dd}/${mm}`
-                      });
-                    }
+                    // RENDER TABLE ACCORDING TO DISPLAY VIEW MODE
+                    if (scheduleDisplay === 'Tuần') {
+                      // Compute week dates starting from scheduleCalendarDate
+                      const weekDays = [];
+                      const start = new Date(scheduleCalendarDate);
+                      for (let i = 0; i < 7; i++) {
+                        const d = new Date(start);
+                        d.setDate(start.getDate() + i);
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const yyyy = d.getFullYear();
+                        const dayOfWeek = d.getDay();
+                        const dayOfWeekLabel = dayOfWeek === 0 ? 'CN' : `Thứ ${dayOfWeek + 1}`;
+                        weekDays.push({
+                          dateStr: `${yyyy}-${mm}-${dd}`,
+                          label: `${dayOfWeekLabel} - ${dd}/${mm}`
+                        });
+                      }
 
-                    const isAllTableSelected = activeSchedules.length > 0 && activeSchedules.every(emp =>
-                      weekDays.every(day => isCellSelected(emp.id, day.dateStr))
-                    );
+                      const isAllTableSelected = activeSchedules.length > 0 && activeSchedules.every(emp =>
+                        weekDays.every(day => isCellSelected(emp.id, day.dateStr))
+                      );
 
-                    return (
-                      <table className="w-full border-collapse text-left min-w-[800px]">
-                        <thead>
-                          <tr className="bg-[#181922]">
-                            <th
-                              className={`p-4 text-[11px] font-bold uppercase tracking-wider text-left cursor-pointer select-none transition-colors border-t-4 w-[20%] ${isAllTableSelected
-                                ? 'bg-[#0078d7]/20 text-[#00a2e8] border-t-[#00a2e8] border-l-4 border-l-[#00a2e8] border-b border-[#21232d]'
-                                : 'text-slate-400 hover:bg-[#20212a] border-t-transparent border-b border-[#21232d]'
-                                }`}
-                              onClick={() => {
-                                const newCells = { ...scheduleSelectedCells };
-                                activeSchedules.forEach(emp => {
-                                  if (isAllTableSelected) {
-                                    const current = newCells[emp.id] || [];
-                                    newCells[emp.id] = current.filter(d => !weekDays.some(wd => wd.dateStr === d));
-                                  } else {
-                                    const current = newCells[emp.id] || [];
-                                    const updated = [...current];
-                                    weekDays.forEach(day => {
-                                      if (!updated.includes(day.dateStr)) {
-                                        updated.push(day.dateStr);
-                                      }
-                                    });
-                                    newCells[emp.id] = updated;
-                                  }
-                                });
-                                setScheduleSelectedCells(newCells);
-                              }}
-                            >
-                              <span>Nhóm nhân viên</span>
-                            </th>
-                            {weekDays.map((day) => {
-                              const isAllSelected = activeSchedules.every(emp => isCellSelected(emp.id, day.dateStr));
-                              return (
-                                <th
-                                  key={day.dateStr}
-                                  className={`p-4 text-[11px] font-bold uppercase tracking-wider text-center cursor-pointer select-none transition-colors border-t-4 ${isAllSelected
-                                    ? 'bg-[#0078d7]/20 text-[#00a2e8] border-t-[#00a2e8] border-b border-[#21232d]'
-                                    : 'text-slate-400 hover:bg-[#20212a] border-t-transparent border-b border-[#21232d]'
-                                    }`}
-                                  onClick={() => {
-                                    const newCells = { ...scheduleSelectedCells };
-                                    activeSchedules.forEach(emp => {
+                      return (
+                        <table className="w-full border-collapse text-left min-w-[800px]">
+                          <thead>
+                            <tr className="bg-[#181922]">
+                              <th
+                                className={`p-4 text-[11px] font-bold uppercase tracking-wider text-left cursor-pointer select-none transition-colors border-t-4 w-[20%] ${isAllTableSelected
+                                  ? 'bg-[#0078d7]/20 text-[#00a2e8] border-t-[#00a2e8] border-l-4 border-l-[#00a2e8] border-b border-[#21232d]'
+                                  : 'text-slate-400 hover:bg-[#20212a] border-t-transparent border-b border-[#21232d]'
+                                  }`}
+                                onClick={() => {
+                                  const newCells = { ...scheduleSelectedCells };
+                                  activeSchedules.forEach(emp => {
+                                    if (isAllTableSelected) {
                                       const current = newCells[emp.id] || [];
-                                      if (isAllSelected) {
-                                        newCells[emp.id] = current.filter(d => d !== day.dateStr);
-                                      } else {
-                                        if (!current.includes(day.dateStr)) {
-                                          newCells[emp.id] = [...current, day.dateStr];
+                                      newCells[emp.id] = current.filter(d => !weekDays.some(wd => wd.dateStr === d));
+                                    } else {
+                                      const current = newCells[emp.id] || [];
+                                      const updated = [...current];
+                                      weekDays.forEach(day => {
+                                        if (!updated.includes(day.dateStr)) {
+                                          updated.push(day.dateStr);
                                         }
-                                      }
-                                    });
-                                    setScheduleSelectedCells(newCells);
-                                  }}
-                                >
-                                  <div className="flex flex-col items-center space-y-1">
-                                    <span>{day.label}</span>
-                                    {/* <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                      });
+                                      newCells[emp.id] = updated;
+                                    }
+                                  });
+                                  setScheduleSelectedCells(newCells);
+                                }}
+                              >
+                                <span>Nhóm nhân viên</span>
+                              </th>
+                              {weekDays.map((day) => {
+                                const isAllSelected = activeSchedules.every(emp => isCellSelected(emp.id, day.dateStr));
+                                return (
+                                  <th
+                                    key={day.dateStr}
+                                    className={`p-4 text-[11px] font-bold uppercase tracking-wider text-center cursor-pointer select-none transition-colors border-t-4 ${isAllSelected
+                                      ? 'bg-[#0078d7]/20 text-[#00a2e8] border-t-[#00a2e8] border-b border-[#21232d]'
+                                      : 'text-slate-400 hover:bg-[#20212a] border-t-transparent border-b border-[#21232d]'
+                                      }`}
+                                    onClick={() => {
+                                      const newCells = { ...scheduleSelectedCells };
+                                      activeSchedules.forEach(emp => {
+                                        const current = newCells[emp.id] || [];
+                                        if (isAllSelected) {
+                                          newCells[emp.id] = current.filter(d => d !== day.dateStr);
+                                        } else {
+                                          if (!current.includes(day.dateStr)) {
+                                            newCells[emp.id] = [...current, day.dateStr];
+                                          }
+                                        }
+                                      });
+                                      setScheduleSelectedCells(newCells);
+                                    }}
+                                  >
+                                    <div className="flex flex-col items-center space-y-1">
+                                      <span>{day.label}</span>
+                                      {/* <span className={`text-[9px] px-1.5 py-0.5 rounded ${
                                       isAllSelected ? 'bg-[#00a2e8]/20 text-[#00a2e8] font-semibold' : 'bg-slate-800 text-slate-400'
                                     }`}>
                                       {isAllSelected ? 'Hủy chọn cột' : 'Chọn cột'}
                                     </span> */}
-                                  </div>
-                                </th>
-                              );
-                            })}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#21232d] bg-[#111218]">
-                          {activeSchedules.map((emp) => (
-                            <tr key={emp.id} className="hover:bg-[#1a1b24]/40 transition">
-                              <td
-                                className={`p-4 border-b border-[#21232d] cursor-pointer transition-colors ${computedSelectedGroups.includes(emp.id) ? 'bg-[#0078d7]/20 border-l-4 border-l-[#00a2e8]' : 'hover:bg-[#1a1b24]'
-                                  }`}
-                                onClick={() => toggleGroupSelection(emp.id)}
-                              >
-                                <div className="flex items-center space-x-2 text-left">
-                                  <input
-                                    type="checkbox"
-                                    checked={computedSelectedGroups.includes(emp.id)}
-                                    readOnly
-                                    className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
-                                  />
-                                  <span className={`font-bold text-xs tracking-tight leading-snug ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-100'
-                                    }`}>{emp.name}</span>
-                                </div>
-                              </td>
-                              {weekDays.map((day) => {
-                                const cell = getCellForType(emp, day.dateStr, scheduleType);
-                                const isSelected = isCellSelected(emp.id, day.dateStr);
-                                const conflict = cell.assigned && hasOtherTypeSchedule(emp, day.dateStr, scheduleType);
-
-                                if (conflict) {
-                                  return (
-                                    <td
-                                      key={day.dateStr}
-                                      className={`p-3 border-b border-[#21232d] align-middle text-center cursor-pointer transition-colors ${isSelected ? 'bg-[#0078d7]/10' : ''
-                                        }`}
-                                      onClick={() => toggleCellSelection(emp.id, day.dateStr)}
-                                    >
-                                      <div
-                                        className={`border border-red-500 bg-red-500/10 rounded-xl p-3 flex flex-col justify-center items-center text-center h-[72px] min-w-[120px] transition-all duration-300 relative ${isSelected ? 'ring-2 ring-[#00a2e8]' : ''
-                                          }`}
-                                        title={`Ngày này nhóm ${emp.name} đã có lịch biểu khác`}
-                                      >
-                                        <div className="font-bold text-[11px] text-red-500">{cell.shiftName || 'Ca hành chính'}</div>
-                                        <div className="text-[10px] text-red-400 font-mono mt-0.5 font-semibold tracking-wide">{cell.startTime}-{cell.endTime}</div>
-                                        <div className="text-[8px] text-red-400/80 uppercase font-bold mt-1">Trùng lịch</div>
-                                      </div>
-                                    </td>
-                                  );
-                                } else if (cell.assigned) {
-                                  return (
-                                    <td
-                                      key={day.dateStr}
-                                      className={`p-3 border-b border-[#21232d] align-middle text-center cursor-pointer transition-colors ${isSelected ? 'bg-[#0078d7]/10' : ''
-                                        }`}
-                                      onClick={() => toggleCellSelection(emp.id, day.dateStr)}
-                                    >
-                                      <div
-                                        className={`border border-[#0078d7] bg-[#0078d7]/5 rounded-xl p-3 flex flex-col justify-center items-center text-center h-[72px] min-w-[120px] transition-all duration-300 ${isSelected ? 'ring-2 ring-[#00a2e8]' : ''
-                                          }`}
-                                      >
-                                        <div className="font-bold text-[11px] text-[#00a2e8]">{cell.shiftName || 'Ca hành chính'}</div>
-                                        <div className="text-[10px] text-slate-300 font-mono mt-0.5 font-semibold tracking-wide">{cell.startTime}-{cell.endTime}</div>
-                                      </div>
-                                    </td>
-                                  );
-                                } else {
-                                  return (
-                                    <td
-                                      key={day.dateStr}
-                                      className={`p-3 border-b border-[#21232d] align-middle text-center cursor-pointer transition-colors ${isSelected ? 'bg-[#0078d7]/10' : ''
-                                        }`}
-                                      onClick={() => toggleCellSelection(emp.id, day.dateStr)}
-                                    >
-                                      <div className="flex justify-center items-center h-[72px]">
-                                        <span className={`border px-3.5 py-1 rounded-full text-center text-[10px] font-semibold tracking-wide shadow-sm uppercase ${isSelected
-                                          ? 'bg-[#00a2e8]/20 border-[#00a2e8] text-[#00a2e8]'
-                                          : 'bg-[#1c1d26]/60 border border-[#2d2f3c] text-slate-500'
-                                          }`}>
-                                          {isSelected ? 'Selected' : 'Unassigned'}
-                                        </span>
-                                      </div>
-                                    </td>
-                                  );
-                                }
+                                    </div>
+                                  </th>
+                                );
                               })}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    );
-                  } else if (scheduleDisplay === 'Ngày') {
-                    // RENDER 24-HOUR TIMELINE VIEW
-                    return (
-                      <div className="p-5 space-y-6 bg-[#111218] min-w-[800px]">
-                        {/* Hours Labels Strip */}
-                        <div className="grid grid-cols-24 gap-0 pl-[20%] text-[9px] font-mono font-bold text-slate-500 tracking-wider text-center border-b border-[#21232d]/60 pb-2">
-                          {Array.from({ length: 24 }, (_, h) => (
-                            <div key={h} className="border-r border-[#21232d]/30 last:border-0">
-                              {String(h).padStart(2, '0')}:00
-                            </div>
-                          ))}
+                          </thead>
+                          <tbody className="divide-y divide-[#21232d] bg-[#111218]">
+                            {activeSchedules.map((emp) => (
+                              <tr key={emp.id} className="hover:bg-[#1a1b24]/40 transition">
+                                <td
+                                  className={`p-4 border-b border-[#21232d] cursor-pointer transition-colors ${computedSelectedGroups.includes(emp.id) ? 'bg-[#0078d7]/20 border-l-4 border-l-[#00a2e8]' : 'hover:bg-[#1a1b24]'
+                                    }`}
+                                  onClick={() => toggleGroupSelection(emp.id)}
+                                >
+                                  <div className="flex items-center space-x-2 text-left">
+                                    <input
+                                      type="checkbox"
+                                      checked={computedSelectedGroups.includes(emp.id)}
+                                      readOnly
+                                      className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                                    />
+                                    <span className={`font-bold text-xs tracking-tight leading-snug ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-100'
+                                      }`}>{emp.name}</span>
+                                  </div>
+                                </td>
+                                {weekDays.map((day) => {
+                                  const cell = getCellForType(emp, day.dateStr, scheduleType);
+                                  const isSelected = isCellSelected(emp.id, day.dateStr);
+                                  const conflict = cell.assigned && hasOtherTypeSchedule(emp, day.dateStr, scheduleType);
+
+                                  if (conflict) {
+                                    return (
+                                      <td
+                                        key={day.dateStr}
+                                        className={`p-3 border-b border-[#21232d] align-middle text-center cursor-pointer transition-colors ${isSelected ? 'bg-[#0078d7]/10' : ''
+                                          }`}
+                                        onClick={() => toggleCellSelection(emp.id, day.dateStr)}
+                                      >
+                                        <div
+                                          className={`border border-red-500 bg-red-500/10 rounded-xl p-3 flex flex-col justify-center items-center text-center h-[72px] min-w-[120px] transition-all duration-300 relative ${isSelected ? 'ring-2 ring-[#00a2e8]' : ''
+                                            }`}
+                                          title={`Ngày này nhóm ${emp.name} đã có lịch biểu khác`}
+                                        >
+                                          <div className="font-bold text-[11px] text-red-500">{cell.shiftName || 'Ca hành chính'}</div>
+                                          <div className="text-[10px] text-red-400 font-mono mt-0.5 font-semibold tracking-wide">{cell.startTime}-{cell.endTime}</div>
+                                          <div className="text-[8px] text-red-400/80 uppercase font-bold mt-1">Trùng lịch</div>
+                                        </div>
+                                      </td>
+                                    );
+                                  } else if (cell.assigned) {
+                                    return (
+                                      <td
+                                        key={day.dateStr}
+                                        className={`p-3 border-b border-[#21232d] align-middle text-center cursor-pointer transition-colors ${isSelected ? 'bg-[#0078d7]/10' : ''
+                                          }`}
+                                        onClick={() => toggleCellSelection(emp.id, day.dateStr)}
+                                      >
+                                        <div
+                                          className={`border border-[#0078d7] bg-[#0078d7]/5 rounded-xl p-3 flex flex-col justify-center items-center text-center h-[72px] min-w-[120px] transition-all duration-300 ${isSelected ? 'ring-2 ring-[#00a2e8]' : ''
+                                            }`}
+                                        >
+                                          <div className="font-bold text-[11px] text-[#00a2e8]">{cell.shiftName || 'Ca hành chính'}</div>
+                                          <div className="text-[10px] text-slate-300 font-mono mt-0.5 font-semibold tracking-wide">{cell.startTime}-{cell.endTime}</div>
+                                        </div>
+                                      </td>
+                                    );
+                                  } else {
+                                    return (
+                                      <td
+                                        key={day.dateStr}
+                                        className={`p-3 border-b border-[#21232d] align-middle text-center cursor-pointer transition-colors ${isSelected ? 'bg-[#0078d7]/10' : ''
+                                          }`}
+                                        onClick={() => toggleCellSelection(emp.id, day.dateStr)}
+                                      >
+                                        <div className="flex justify-center items-center h-[72px]">
+                                          <span className={`border px-3.5 py-1 rounded-full text-center text-[10px] font-semibold tracking-wide shadow-sm uppercase ${isSelected
+                                            ? 'bg-[#00a2e8]/20 border-[#00a2e8] text-[#00a2e8]'
+                                            : 'bg-[#1c1d26]/60 border border-[#2d2f3c] text-slate-500'
+                                            }`}>
+                                            {isSelected ? 'Selected' : 'Unassigned'}
+                                          </span>
+                                        </div>
+                                      </td>
+                                    );
+                                  }
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    } else if (scheduleDisplay === 'Ngày') {
+                      // RENDER 24-HOUR TIMELINE VIEW
+                      return (
+                        <div className="p-5 space-y-6 bg-[#111218] min-w-[800px]">
+                          {/* Hours Labels Strip */}
+                          <div className="grid grid-cols-24 gap-0 pl-[20%] text-[9px] font-mono font-bold text-slate-500 tracking-wider text-center border-b border-[#21232d]/60 pb-2">
+                            {Array.from({ length: 24 }, (_, h) => (
+                              <div key={h} className="border-r border-[#21232d]/30 last:border-0">
+                                {String(h).padStart(2, '0')}:00
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Timeline Rows */}
+                          {activeSchedules.map((emp) => {
+                            const cell = getCellForType(emp, scheduleCalendarDate, scheduleType);
+                            const conflict = cell.assigned && hasOtherTypeSchedule(emp, scheduleCalendarDate, scheduleType);
+
+                            // Compute percentage offset
+                            const parseTimeToPercent = (tStr: string) => {
+                              const [h, m] = (tStr || '00:00').split(':').map(Number);
+                              return ((h * 60 + m) / (24 * 60)) * 100;
+                            };
+
+                            const startPct = cell.assigned ? parseTimeToPercent(cell.startTime || '08:00') : 0;
+                            const endPct = cell.assigned ? parseTimeToPercent(cell.endTime || '17:00') : 0;
+                            const barWidth = cell.assigned ? Math.max(endPct - startPct, 3) : 0;
+
+                            return (
+                              <div key={emp.id} className="flex items-center">
+                                {/* Employee Column Header */}
+                                <div
+                                  className={`w-[20%] text-left pr-4 p-2 cursor-pointer rounded-l-xl transition-colors ${computedSelectedGroups.includes(emp.id) ? 'bg-[#0078d7]/20 border-l-4 border-l-[#00a2e8]' : 'hover:bg-[#1a1b24]/40'
+                                    }`}
+                                  onClick={() => toggleGroupSelection(emp.id)}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={computedSelectedGroups.includes(emp.id)}
+                                      readOnly
+                                      className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                                    />
+                                    <span className={`font-bold text-xs block truncate ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-100'
+                                      }`}>{emp.name}</span>
+                                  </div>
+                                </div>
+
+                                {/* Continuous Horizontal Timeline Bar */}
+                                <div
+                                  id={`attendance-track-${emp.id}`}
+                                  className="flex-1 h-12 bg-[#171822] border border-[#2d2f3c]/60 rounded-2xl relative overflow-hidden flex items-center shadow-inner"
+                                >
+                                  {/* Background Grid Lines */}
+                                  {Array.from({ length: 24 }, (_, h) => (
+                                    <div key={h} className="absolute top-0 bottom-0 border-r border-[#21232d]/30" style={{ left: `${(h / 24) * 100}%` }} />
+                                  ))}
+
+                                  {/* Render Filled Scheduled Bar */}
+                                  {cell.assigned ? (
+                                    <div
+                                      className={`absolute top-1.5 bottom-1.5 rounded-xl flex items-center justify-between px-1 shadow-md group transition duration-200 cursor-move ${conflict
+                                        ? 'bg-red-500/20 border border-red-500 shadow-red-500/10 hover:bg-red-500/30'
+                                        : 'bg-[#00a2e8]/20 border border-[#00a2e8] shadow-[#00a2e8]/10 hover:bg-[#00a2e8]/30'
+                                        }`}
+                                      style={{ left: `${startPct}%`, width: `${barWidth}%` }}
+                                      title={conflict ? `Ngày này nhóm ${emp.name} đã có lịch biểu khác` : undefined}
+                                      onMouseDown={(e) => {
+                                        setDraggingAttendance({
+                                          empId: emp.id,
+                                          type: 'move',
+                                          startX: e.clientX,
+                                          initialStartTime: cell.startTime,
+                                          initialEndTime: cell.endTime
+                                        });
+                                      }}
+                                    >
+                                      {/* Left resize handle */}
+                                      <div
+                                        className={`w-2.5 h-full rounded-l-lg cursor-ew-resize flex items-center justify-center text-white text-[8px] font-bold ${conflict ? 'bg-red-500/50 hover:bg-red-500' : 'bg-[#00a2e8]/50 hover:bg-[#00a2e8]'
+                                          }`}
+                                        onMouseDown={(e) => {
+                                          e.stopPropagation();
+                                          setDraggingAttendance({
+                                            empId: emp.id,
+                                            type: 'resize-start',
+                                            startX: e.clientX,
+                                            initialStartTime: cell.startTime,
+                                            initialEndTime: cell.endTime
+                                          });
+                                        }}
+                                      >
+                                        ⋮
+                                      </div>
+
+                                      <div className={`text-[10px] font-bold font-mono tracking-wider truncate flex items-center space-x-1.5 px-2 select-none pointer-events-none ${conflict ? 'text-red-400' : 'text-[#00a2e8]'
+                                        }`}>
+                                        <Clock size={11} className="shrink-0" />
+                                        <span>{cell.shiftName || 'Ca hành chính'} ({cell.startTime} - {cell.endTime}){conflict ? ' - Trùng lịch' : ''}</span>
+                                      </div>
+
+                                      {/* Right resize handle */}
+                                      <div
+                                        className={`w-2.5 h-full rounded-r-lg cursor-ew-resize flex items-center justify-center text-white text-[8px] font-bold ${conflict ? 'bg-red-500/50 hover:bg-red-500' : 'bg-[#00a2e8]/50 hover:bg-[#00a2e8]'
+                                          }`}
+                                        onMouseDown={(e) => {
+                                          e.stopPropagation();
+                                          setDraggingAttendance({
+                                            empId: emp.id,
+                                            type: 'resize-end',
+                                            startX: e.clientX,
+                                            initialStartTime: cell.startTime,
+                                            initialEndTime: cell.endTime
+                                          });
+                                        }}
+                                      >
+                                        ⋮
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="w-full text-center text-[10px] text-slate-600 font-semibold uppercase tracking-widest pointer-events-none">
+                                      Chưa phân lịch (Unassigned)
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
+                      );
+                    } else if (scheduleDisplay === 'Tháng') {
+                      // RENDER MONTHLY COMPACT DOT MATRIX GRID
+                      const monthDays = [];
+                      const start = new Date(scheduleCalendarDate);
+                      for (let i = 0; i < 30; i++) {
+                        const d = new Date(start);
+                        d.setDate(start.getDate() + i);
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const yyyy = d.getFullYear();
+                        monthDays.push({
+                          dateStr: `${yyyy}-${mm}-${dd}`,
+                          label: `${mm}-${dd}`
+                        });
+                      }
 
-                        {/* Timeline Rows */}
-                        {activeSchedules.map((emp) => {
-                          const cell = getCellForType(emp, scheduleCalendarDate, scheduleType);
-                          const conflict = cell.assigned && hasOtherTypeSchedule(emp, scheduleCalendarDate, scheduleType);
-
-                          // Compute percentage offset
-                          const parseTimeToPercent = (tStr: string) => {
-                            const [h, m] = (tStr || '00:00').split(':').map(Number);
-                            return ((h * 60 + m) / (24 * 60)) * 100;
-                          };
-
-                          const startPct = cell.assigned ? parseTimeToPercent(cell.startTime || '08:00') : 0;
-                          const endPct = cell.assigned ? parseTimeToPercent(cell.endTime || '17:00') : 0;
-                          const barWidth = cell.assigned ? Math.max(endPct - startPct, 3) : 0;
-
-                          return (
-                            <div key={emp.id} className="flex items-center">
-                              {/* Employee Column Header */}
+                      return (
+                        <div className="p-5 space-y-6 bg-[#111218] min-w-[800px]">
+                          {activeSchedules.map((emp) => (
+                            <div key={emp.id} className="flex items-start border-b border-[#21232d] pb-5 last:border-none last:pb-0">
                               <div
-                                className={`w-[20%] text-left pr-4 p-2 cursor-pointer rounded-l-xl transition-colors ${computedSelectedGroups.includes(emp.id) ? 'bg-[#0078d7]/20 border-l-4 border-l-[#00a2e8]' : 'hover:bg-[#1a1b24]/40'
+                                className={`w-[20%] text-left pr-4 pt-1 p-2 cursor-pointer rounded-l-xl transition-colors ${computedSelectedGroups.includes(emp.id) ? 'bg-[#0078d7]/20 border-l-4 border-l-[#00a2e8]' : 'hover:bg-[#1a1b24]/40'
                                   }`}
                                 onClick={() => toggleGroupSelection(emp.id)}
                               >
@@ -1179,303 +1298,184 @@ export const AccessSchedulePage = () => {
                                     readOnly
                                     className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
                                   />
-                                  <span className={`font-bold text-xs block truncate ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-100'
+                                  <span className={`font-bold text-xs block ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-100'
                                     }`}>{emp.name}</span>
                                 </div>
                               </div>
-
-                              {/* Continuous Horizontal Timeline Bar */}
-                              <div
-                                id={`attendance-track-${emp.id}`}
-                                className="flex-1 h-12 bg-[#171822] border border-[#2d2f3c]/60 rounded-2xl relative overflow-hidden flex items-center shadow-inner"
-                              >
-                                {/* Background Grid Lines */}
-                                {Array.from({ length: 24 }, (_, h) => (
-                                  <div key={h} className="absolute top-0 bottom-0 border-r border-[#21232d]/30" style={{ left: `${(h / 24) * 100}%` }} />
-                                ))}
-
-                                {/* Render Filled Scheduled Bar */}
-                                {cell.assigned ? (
-                                  <div
-                                    className={`absolute top-1.5 bottom-1.5 rounded-xl flex items-center justify-between px-1 shadow-md group transition duration-200 cursor-move ${conflict
-                                      ? 'bg-red-500/20 border border-red-500 shadow-red-500/10 hover:bg-red-500/30'
-                                      : 'bg-[#00a2e8]/20 border border-[#00a2e8] shadow-[#00a2e8]/10 hover:bg-[#00a2e8]/30'
-                                      }`}
-                                    style={{ left: `${startPct}%`, width: `${barWidth}%` }}
-                                    title={conflict ? `Ngày này nhóm ${emp.name} đã có lịch biểu khác` : undefined}
-                                    onMouseDown={(e) => {
-                                      setDraggingAttendance({
-                                        empId: emp.id,
-                                        type: 'move',
-                                        startX: e.clientX,
-                                        initialStartTime: cell.startTime,
-                                        initialEndTime: cell.endTime
-                                      });
-                                    }}
-                                  >
-                                    {/* Left resize handle */}
-                                    <div
-                                      className={`w-2.5 h-full rounded-l-lg cursor-ew-resize flex items-center justify-center text-white text-[8px] font-bold ${conflict ? 'bg-red-500/50 hover:bg-red-500' : 'bg-[#00a2e8]/50 hover:bg-[#00a2e8]'
-                                        }`}
-                                      onMouseDown={(e) => {
-                                        e.stopPropagation();
-                                        setDraggingAttendance({
-                                          empId: emp.id,
-                                          type: 'resize-start',
-                                          startX: e.clientX,
-                                          initialStartTime: cell.startTime,
-                                          initialEndTime: cell.endTime
-                                        });
-                                      }}
-                                    >
-                                      ⋮
-                                    </div>
-
-                                    <div className={`text-[10px] font-bold font-mono tracking-wider truncate flex items-center space-x-1.5 px-2 select-none pointer-events-none ${conflict ? 'text-red-400' : 'text-[#00a2e8]'
-                                      }`}>
-                                      <Clock size={11} className="shrink-0" />
-                                      <span>{cell.shiftName || 'Ca hành chính'} ({cell.startTime} - {cell.endTime}){conflict ? ' - Trùng lịch' : ''}</span>
-                                    </div>
-
-                                    {/* Right resize handle */}
-                                    <div
-                                      className={`w-2.5 h-full rounded-r-lg cursor-ew-resize flex items-center justify-center text-white text-[8px] font-bold ${conflict ? 'bg-red-500/50 hover:bg-red-500' : 'bg-[#00a2e8]/50 hover:bg-[#00a2e8]'
-                                        }`}
-                                      onMouseDown={(e) => {
-                                        e.stopPropagation();
-                                        setDraggingAttendance({
-                                          empId: emp.id,
-                                          type: 'resize-end',
-                                          startX: e.clientX,
-                                          initialStartTime: cell.startTime,
-                                          initialEndTime: cell.endTime
-                                        });
-                                      }}
-                                    >
-                                      ⋮
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="w-full text-center text-[10px] text-slate-600 font-semibold uppercase tracking-widest pointer-events-none">
-                                    Chưa phân lịch (Unassigned)
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  } else if (scheduleDisplay === 'Tháng') {
-                    // RENDER MONTHLY COMPACT DOT MATRIX GRID
-                    const monthDays = [];
-                    const start = new Date(scheduleCalendarDate);
-                    for (let i = 0; i < 30; i++) {
-                      const d = new Date(start);
-                      d.setDate(start.getDate() + i);
-                      const mm = String(d.getMonth() + 1).padStart(2, '0');
-                      const dd = String(d.getDate()).padStart(2, '0');
-                      const yyyy = d.getFullYear();
-                      monthDays.push({
-                        dateStr: `${yyyy}-${mm}-${dd}`,
-                        label: `${mm}-${dd}`
-                      });
-                    }
-
-                    return (
-                      <div className="p-5 space-y-6 bg-[#111218] min-w-[800px]">
-                        {activeSchedules.map((emp) => (
-                          <div key={emp.id} className="flex items-start border-b border-[#21232d] pb-5 last:border-none last:pb-0">
-                            <div
-                              className={`w-[20%] text-left pr-4 pt-1 p-2 cursor-pointer rounded-l-xl transition-colors ${computedSelectedGroups.includes(emp.id) ? 'bg-[#0078d7]/20 border-l-4 border-l-[#00a2e8]' : 'hover:bg-[#1a1b24]/40'
-                                }`}
-                              onClick={() => toggleGroupSelection(emp.id)}
-                            >
-                              <div className="flex items-center space-x-2">
-                                <input
-                                  type="checkbox"
-                                  checked={computedSelectedGroups.includes(emp.id)}
-                                  readOnly
-                                  className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
-                                />
-                                <span className={`font-bold text-xs block ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-100'
-                                  }`}>{emp.name}</span>
-                              </div>
-                            </div>
-                            <div className="flex-1">
-                              <div className="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wider">Trạng thái phân ca 30 ngày tới:</div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {monthDays.map((day, dIdx) => {
-                                  const cell = getCellForType(emp, day.dateStr, scheduleType);
-                                  const isSelected = isCellSelected(emp.id, day.dateStr);
-                                  const conflict = cell.assigned && hasOtherTypeSchedule(emp, day.dateStr, scheduleType);
-                                  return (
-                                    <div
-                                      key={dIdx}
-                                      onClick={() => toggleCellSelection(emp.id, day.dateStr)}
-                                      className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center text-[9px] font-mono font-bold border transition duration-200 cursor-pointer ${conflict
-                                        ? 'bg-red-500/15 border-red-500 text-red-500 shadow-md shadow-red-500/5'
-                                        : cell.assigned
-                                          ? 'bg-[#0078d7]/15 border-[#0078d7] text-[#00a2e8] shadow-md shadow-[#0078d7]/5'
-                                          : isSelected
-                                            ? 'bg-[#00a2e8]/20 border-[#00a2e8] text-[#00a2e8]'
-                                            : 'bg-[#1c1d26]/40 border-[#2d2f3c] text-slate-600 hover:border-slate-500'
-                                        } ${isSelected && !conflict && !cell.assigned ? 'ring-2 ring-[#00a2e8]' : ''}`}
-                                      title={
-                                        conflict
-                                          ? `Ngày này nhóm ${emp.name} đã có lịch biểu khác`
+                              <div className="flex-1">
+                                <div className="text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wider">Trạng thái phân ca 30 ngày tới:</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {monthDays.map((day, dIdx) => {
+                                    const cell = getCellForType(emp, day.dateStr, scheduleType);
+                                    const isSelected = isCellSelected(emp.id, day.dateStr);
+                                    const conflict = cell.assigned && hasOtherTypeSchedule(emp, day.dateStr, scheduleType);
+                                    return (
+                                      <div
+                                        key={dIdx}
+                                        onClick={() => toggleCellSelection(emp.id, day.dateStr)}
+                                        className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center text-[9px] font-mono font-bold border transition duration-200 cursor-pointer ${conflict
+                                          ? 'bg-red-500/15 border-red-500 text-red-500 shadow-md shadow-red-500/5'
                                           : cell.assigned
-                                            ? `${day.dateStr}: ${cell.shiftName} (${cell.startTime}-${cell.endTime})`
-                                            : `${day.dateStr}: Unassigned`
-                                      }
-                                    >
-                                      <span className="text-[7px] text-slate-500 leading-none">{day.label.split('-')[0]}</span>
-                                      <span className="text-xs leading-none mt-0.5">{day.label.split('-')[1]}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  } else {
-                    // RENDER ANNUAL DISTRIBUTION SUMMARY CARDS
-                    return (
-                      <div className="p-6 bg-[#111218] grid grid-cols-1 md:grid-cols-2 gap-6 min-w-[800px]">
-                        {activeSchedules.map((emp) => {
-                          // Count active shifts for current type
-                          const daysCount = Object.keys(emp.days).filter(k => {
-                            if (k.endsWith(`_${scheduleType}`)) return emp.days[k].assigned;
-                            if (!k.includes('_')) return emp.days[k].assigned && emp.days[k].type === scheduleType;
-                            return false;
-                          }).length;
-                          return (
-                            <div key={emp.id} className={`bg-[#181921] border rounded-2xl p-5 space-y-4 transition-all ${computedSelectedGroups.includes(emp.id) ? 'border-[#00a2e8] bg-[#0078d7]/5' : 'border-[#2d2f3c]'
-                              }`}>
-                              <div className="flex justify-between items-start">
-                                <div
-                                  className="flex items-center space-x-2 cursor-pointer"
-                                  onClick={() => toggleGroupSelection(emp.id)}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={computedSelectedGroups.includes(emp.id)}
-                                    readOnly
-                                    className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
-                                  />
-                                  <span className={`text-xs font-bold block ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-200'
-                                    }`}>{emp.name}</span>
-                                </div>
-                                <div className="px-2.5 py-1 rounded bg-[#00a2e8]/10 border border-[#00a2e8]/20 text-[10px] text-[#00a2e8] font-mono uppercase font-bold">
-                                  Annual View
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-3 gap-3">
-                                <div className="bg-[#111218] p-3 rounded-xl border border-[#2d2f3c]/40 text-center">
-                                  <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-1">Số ca phân</span>
-                                  <span className="text-sm font-bold text-[#00a2e8] font-mono">{daysCount} ca</span>
-                                </div>
-                                <div className="bg-[#111218] p-3 rounded-xl border border-[#2d2f3c]/40 text-center">
-                                  <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-1">Tổng giờ</span>
-                                  <span className="text-sm font-bold text-slate-200 font-mono">{daysCount * 9} giờ</span>
-                                </div>
-                                <div className="bg-[#111218] p-3 rounded-xl border border-[#2d2f3c]/40 text-center">
-                                  <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-1">Khu vực kiểm soát</span>
-                                  <span className="text-sm font-bold text-slate-400 font-mono">Checkin</span>
+                                            ? 'bg-[#0078d7]/15 border-[#0078d7] text-[#00a2e8] shadow-md shadow-[#0078d7]/5'
+                                            : isSelected
+                                              ? 'bg-[#00a2e8]/20 border-[#00a2e8] text-[#00a2e8]'
+                                              : 'bg-[#1c1d26]/40 border-[#2d2f3c] text-slate-600 hover:border-slate-500'
+                                          } ${isSelected && !conflict && !cell.assigned ? 'ring-2 ring-[#00a2e8]' : ''}`}
+                                        title={
+                                          conflict
+                                            ? `Ngày này nhóm ${emp.name} đã có lịch biểu khác`
+                                            : cell.assigned
+                                              ? `${day.dateStr}: ${cell.shiftName} (${cell.startTime}-${cell.endTime})`
+                                              : `${day.dateStr}: Unassigned`
+                                        }
+                                      >
+                                        <span className="text-[7px] text-slate-500 leading-none">{day.label.split('-')[0]}</span>
+                                        <span className="text-xs leading-none mt-0.5">{day.label.split('-')[1]}</span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  }
-                })()}
-              </div>
-            </div>
+                          ))}
+                        </div>
+                      );
+                    } else {
+                      // RENDER ANNUAL DISTRIBUTION SUMMARY CARDS
+                      return (
+                        <div className="p-6 bg-[#111218] grid grid-cols-1 md:grid-cols-2 gap-6 min-w-[800px]">
+                          {activeSchedules.map((emp) => {
+                            // Count active shifts for current type
+                            const daysCount = Object.keys(emp.days).filter(k => {
+                              if (k.endsWith(`_${scheduleType}`)) return emp.days[k].assigned;
+                              if (!k.includes('_')) return emp.days[k].assigned && emp.days[k].type === scheduleType;
+                              return false;
+                            }).length;
+                            return (
+                              <div key={emp.id} className={`bg-[#181921] border rounded-2xl p-5 space-y-4 transition-all ${computedSelectedGroups.includes(emp.id) ? 'border-[#00a2e8] bg-[#0078d7]/5' : 'border-[#2d2f3c]'
+                                }`}>
+                                <div className="flex justify-between items-start">
+                                  <div
+                                    className="flex items-center space-x-2 cursor-pointer"
+                                    onClick={() => toggleGroupSelection(emp.id)}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={computedSelectedGroups.includes(emp.id)}
+                                      readOnly
+                                      className="rounded border-[#2d2f3c] bg-[#111218] text-[#00a2e8] focus:ring-0 focus:ring-offset-0 cursor-pointer w-3.5 h-3.5"
+                                    />
+                                    <span className={`text-xs font-bold block ${computedSelectedGroups.includes(emp.id) ? 'text-[#00a2e8]' : 'text-slate-200'
+                                      }`}>{emp.name}</span>
+                                  </div>
+                                  <div className="px-2.5 py-1 rounded bg-[#00a2e8]/10 border border-[#00a2e8]/20 text-[10px] text-[#00a2e8] font-mono uppercase font-bold">
+                                    Annual View
+                                  </div>
+                                </div>
 
-            {/* BOTTOM SAVE ACTIONS GROUP */}
-            {isFillingTable ? (
-              <div className="flex items-center justify-between bg-[#151722] border-2 border-amber-500/20 rounded-2xl p-4 shadow-xl">
-                <div className="flex items-center space-x-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-xs text-amber-300 font-semibold">Bạn đang ở chế độ Xem trước Lịch biểu (Chưa Lưu). Hãy nhấn Lưu để cập nhật chính thức.</span>
+                                <div className="grid grid-cols-3 gap-3">
+                                  <div className="bg-[#111218] p-3 rounded-xl border border-[#2d2f3c]/40 text-center">
+                                    <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-1">Số ca phân</span>
+                                    <span className="text-sm font-bold text-[#00a2e8] font-mono">{daysCount} ca</span>
+                                  </div>
+                                  <div className="bg-[#111218] p-3 rounded-xl border border-[#2d2f3c]/40 text-center">
+                                    <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-1">Tổng giờ</span>
+                                    <span className="text-sm font-bold text-slate-200 font-mono">{daysCount * 9} giờ</span>
+                                  </div>
+                                  <div className="bg-[#111218] p-3 rounded-xl border border-[#2d2f3c]/40 text-center">
+                                    <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider mb-1">Khu vực kiểm soát</span>
+                                    <span className="text-sm font-bold text-slate-400 font-mono">Checkin</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={() => {
-                      setSchedulePreviewData(null);
-                      setIsFillingTable(false);
-                    }}
-                    className="px-4 py-2 border border-[#2d2f3c] text-slate-400 hover:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                  >
-                    Hủy xem trước
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!schedulePreviewData) return;
+              </div>
 
-                      // Check overwrite
-                      let hasOverwrite = false;
+              {/* BOTTOM SAVE ACTIONS GROUP */}
+              {isFillingTable ? (
+                <div className="flex items-center justify-between bg-[#151722] border-2 border-amber-500/20 rounded-2xl p-4 shadow-xl">
+                  <div className="flex items-center space-x-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-xs text-amber-300 font-semibold">Bạn đang ở chế độ Xem trước Lịch biểu (Chưa Lưu). Hãy nhấn Lưu để cập nhật chính thức.</span>
+                  </div>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        setSchedulePreviewData(null);
+                        setIsFillingTable(false);
+                      }}
+                      className="px-4 py-2 border border-[#2d2f3c] text-slate-400 hover:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      Hủy xem trước
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!schedulePreviewData) return;
 
-                      for (let i = 0; i < scheduleSavedData.length; i++) {
-                        const savedEmp = scheduleSavedData[i];
-                        const previewEmp = schedulePreviewData[i];
+                        // Check overwrite
+                        let hasOverwrite = false;
 
-                        if (!previewEmp) continue;
+                        for (let i = 0; i < scheduleSavedData.length; i++) {
+                          const savedEmp = scheduleSavedData[i];
+                          const previewEmp = schedulePreviewData[i];
 
-                        const previewKeys = Object.keys(previewEmp.days).filter(k => k.endsWith(`_${scheduleType}`) || (!k.includes('_') && previewEmp.days[k].type === scheduleType));
-                        for (const key of previewKeys) {
-                          const dateStr = key.split('_')[0];
-                          const savedCell = getCellForType(savedEmp, dateStr, scheduleType);
-                          const previewCell = getCellForType(previewEmp, dateStr, scheduleType);
+                          if (!previewEmp) continue;
 
-                          if (previewCell && previewCell.assigned) {
-                            if (savedCell && savedCell.assigned) {
-                              const isDifferent = savedCell.startTime !== previewCell.startTime ||
-                                savedCell.endTime !== previewCell.endTime ||
-                                savedCell.type !== previewCell.type;
-                              if (isDifferent) {
-                                hasOverwrite = true;
-                                break;
+                          const previewKeys = Object.keys(previewEmp.days).filter(k => k.endsWith(`_${scheduleType}`) || (!k.includes('_') && previewEmp.days[k].type === scheduleType));
+                          for (const key of previewKeys) {
+                            const dateStr = key.split('_')[0];
+                            const savedCell = getCellForType(savedEmp, dateStr, scheduleType);
+                            const previewCell = getCellForType(previewEmp, dateStr, scheduleType);
+
+                            if (previewCell && previewCell.assigned) {
+                              if (savedCell && savedCell.assigned) {
+                                const isDifferent = savedCell.startTime !== previewCell.startTime ||
+                                  savedCell.endTime !== previewCell.endTime ||
+                                  savedCell.type !== previewCell.type;
+                                if (isDifferent) {
+                                  hasOverwrite = true;
+                                  break;
+                                }
                               }
                             }
                           }
+                          if (hasOverwrite) break;
                         }
-                        if (hasOverwrite) break;
-                      }
 
-                      if (hasOverwrite) {
-                        setShowOverwriteConfirm(true);
-                      } else {
-                        setScheduleSavedData(schedulePreviewData);
-                        setSchedulePreviewData(null);
-                        setIsFillingTable(false);
-                        setShowScheduleSaveToast(true);
-                        setTimeout(() => setShowScheduleSaveToast(false), 4000);
-                      }
-                    }}
-                    className="px-5 py-2.5 bg-[#0078d7] hover:bg-[#006fca] text-white rounded-xl text-xs font-bold flex items-center space-x-2 transition shadow-lg shadow-[#0078d7]/20 cursor-pointer"
+                        if (hasOverwrite) {
+                          setShowOverwriteConfirm(true);
+                        } else {
+                          setScheduleSavedData(schedulePreviewData);
+                          setSchedulePreviewData(null);
+                          setIsFillingTable(false);
+                          setShowScheduleSaveToast(true);
+                          setTimeout(() => setShowScheduleSaveToast(false), 4000);
+                        }
+                      }}
+                      className="px-5 py-2.5 bg-[#0078d7] hover:bg-[#006fca] text-white rounded-xl text-xs font-bold flex items-center space-x-2 transition shadow-lg shadow-[#0078d7]/20 cursor-pointer"
+                    >
+                      <Save size={14} />
+                      <span>Lưu lịch biểu</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-end bg-[#14151c] border border-[#21232d] rounded-2xl p-4 shadow-md">
+                  <button
+                    disabled
+                    className="px-5 py-2.5 bg-slate-800 text-slate-500 rounded-xl text-xs font-bold flex items-center space-x-2 cursor-not-allowed border border-slate-700/30"
                   >
                     <Save size={14} />
-                    <span>Lưu lịch biểu</span>
+                    <span>Đã lưu</span>
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-end bg-[#14151c] border border-[#21232d] rounded-2xl p-4 shadow-md">
-                <button
-                  disabled
-                  className="px-5 py-2.5 bg-slate-800 text-slate-500 rounded-xl text-xs font-bold flex items-center space-x-2 cursor-not-allowed border border-slate-700/30"
-                >
-                  <Save size={14} />
-                  <span>Đã lưu</span>
-                </button>
-              </div>
-            )}
+              )}
 
             </div>
             {!showAttendanceScheduleDemo && (

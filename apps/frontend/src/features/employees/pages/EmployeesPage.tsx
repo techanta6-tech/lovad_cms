@@ -911,7 +911,7 @@ export const EmployeesPage = () => {
             </div>
 
             {/* Right Panel: nhóm nhân viên builder */}
-            <div className="md:col-span-5 bg-[#14151b] border border-[#21232d] rounded-2xl p-5 shadow-xl relative min-h-[220px] overflow-hidden">
+            {/* <div className="md:col-span-5 bg-[#14151b] border border-[#21232d] rounded-2xl p-5 shadow-xl relative min-h-[220px] overflow-hidden">
               <div className={`transition-all duration-300 ${!showAddGroupDemo ? 'blur-sm pointer-events-none select-none' : ''}`}>
                 <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-5 pb-2 border-b border-slate-800/60 flex items-center space-x-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#00a2e8]" />
@@ -974,7 +974,7 @@ export const EmployeesPage = () => {
                   </div>
                 </div>
               )}
-            </div>
+            </div> */}
 
           </div>
         )}

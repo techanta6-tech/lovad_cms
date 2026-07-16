@@ -176,8 +176,10 @@ export const ReportPage = () => {
   const [isEventExportOpen, setIsEventExportOpen] = useState(false);
   const [isMeetingExportOpen, setIsMeetingExportOpen] = useState(false);
   const [pdfExportRoster, setPdfExportRoster] = useState<any[]>([]);
+  const [pdfAttendanceRoster, setPdfAttendanceRoster] = useState<any[]>([]);
+  const [isAttendancePdfExporting, setIsAttendancePdfExporting] = useState(false);
   const PER_PAGE_OPTIONS = [10, 20, 40, 50, 100];
-  const [showAttendanceReportDemo, setShowAttendanceReportDemo] = useState(false);
+  const [showAttendanceReportDemo, setShowAttendanceReportDemo] = useState(true);
 
   // Server-side paginated data
   const [pageLogs, setPageLogs] = useState<EventLog[]>([]);
@@ -330,6 +332,8 @@ export const ReportPage = () => {
     return `${yyyy}-${mm}-${dd}`;
   });
   const [appliedMeetingAreas, setAppliedMeetingAreas] = useState<string[]>([]);
+  const [appliedMeetingStartTime, setAppliedMeetingStartTime] = useState<string>('00:00');
+  const [appliedMeetingEndTime, setAppliedMeetingEndTime] = useState<string>('23:59');
 
   // Real Database Meeting Report states
   const [meetingReportData, setMeetingReportData] = useState<{
@@ -624,7 +628,7 @@ export const ReportPage = () => {
   const [isAttTypeOpen, setIsAttTypeOpen] = useState<boolean>(false);
   const [isAttGroupOpen, setIsAttGroupOpen] = useState<boolean>(false);
   const [isAttExportOpen, setIsAttExportOpen] = useState<boolean>(false);
-  const [attendanceExportFormat, setAttendanceExportFormat] = useState<'CSV' | 'XLSX'>('CSV');
+  const [attendanceExportFormat, setAttendanceExportFormat] = useState<'XLSX' | 'PDF'>('XLSX');
   const [exportedFileName, setExportedFileName] = useState<string>('ThongKeSuKien_DVMS.xlsx');
   const [selectedAttendanceEmpCode, setSelectedAttendanceEmpCode] = useState<string | null>(null);
 
@@ -956,57 +960,57 @@ export const ReportPage = () => {
   }, []);
 
   // Tự động truy vấn cuộc họp đầu tiên khi vào tab 'meeting' hoặc khi dữ liệu cuộc họp load xong
-  useEffect(() => {
-    if (activeTab === 'meeting' && !selectedMeetingReport && meetings && meetings.length > 0 && appliedMeetingAreas.length > 0) {
-      const schMeetingSavedData = (meetings as any[]).map(m => {
-        const area = areasData.find(a => a.id === m.location_id);
-        return {
-          id: m.id,
-          title: m.title,
-          area: area?.name || m.location_id,
-          date: m.meeting_date ? m.meeting_date.split('T')[0] : '',
-          startTime: m.start_time || '',
-          endTime: m.end_time || '',
-          departments: m.departments || [],
-        };
-      });
-
-      const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
-        return new Date(`${dateStr}T${timeStr || '00:00'}`).getTime();
-      };
-
-      const filteredMeetings = schMeetingSavedData.filter((meet: any) => {
-        const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
-        const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
-        const filterStart = getMeetingTimestamp(appliedStartDate || meetingStartDate, appliedStartTime || meetingStartTime);
-        const filterEnd = getMeetingTimestamp(appliedEndDate || meetingEndDate, appliedEndTime || meetingEndTime);
-
-        const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
-        const isInArea = appliedMeetingAreas.includes(meet.area);
-        return isInTimeRange && isInArea;
-      });
-
-      const targetMeeting = filteredMeetings.length > 0 ? filteredMeetings[0] : schMeetingSavedData[0];
-      if (targetMeeting) {
-        handleSelectMeeting(targetMeeting);
-      }
-    }
-  }, [
-    activeTab,
-    meetings,
-    selectedMeetingReport,
-    areasData,
-    appliedStartDate,
-    appliedEndDate,
-    appliedStartTime,
-    appliedEndTime,
-    appliedMeetingAreas,
-    handleSelectMeeting,
-    meetingStartDate,
-    meetingEndDate,
-    meetingStartTime,
-    meetingEndTime
-  ]);
+  // useEffect(() => {
+  //   if (activeTab === 'meeting' && !selectedMeetingReport && meetings && meetings.length > 0 && appliedMeetingAreas.length > 0) {
+  //     const schMeetingSavedData = (meetings as any[]).map(m => {
+  //       const area = areasData.find(a => a.id === m.location_id);
+  //       return {
+  //         id: m.id,
+  //         title: m.title,
+  //         area: area?.name || m.location_id,
+  //         date: m.meeting_date ? m.meeting_date.split('T')[0] : '',
+  //         startTime: m.start_time || '',
+  //         endTime: m.end_time || '',
+  //         departments: m.departments || [],
+  //       };
+  //     });
+  //
+  //     const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
+  //       return new Date(`${dateStr}T${timeStr || '00:00'}`).getTime();
+  //     };
+  //
+  //     const filteredMeetings = schMeetingSavedData.filter((meet: any) => {
+  //       const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
+  //       const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
+  //       const filterStart = getMeetingTimestamp(appliedStartDate || meetingStartDate, appliedStartTime || meetingStartTime);
+  //       const filterEnd = getMeetingTimestamp(appliedEndDate || meetingEndDate, appliedEndTime || meetingEndTime);
+  //
+  //       const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
+  //       const isInArea = appliedMeetingAreas.includes(meet.area);
+  //       return isInTimeRange && isInArea;
+  //     });
+  //
+  //     const targetMeeting = filteredMeetings.length > 0 ? filteredMeetings[0] : schMeetingSavedData[0];
+  //     if (targetMeeting) {
+  //       handleSelectMeeting(targetMeeting);
+  //     }
+  //   }
+  // }, [
+  //   activeTab,
+  //   meetings,
+  //   selectedMeetingReport,
+  //   areasData,
+  //   appliedStartDate,
+  //   appliedEndDate,
+  //   appliedStartTime,
+  //   appliedEndTime,
+  //   appliedMeetingAreas,
+  //   handleSelectMeeting,
+  //   meetingStartDate,
+  //   meetingEndDate,
+  //   meetingStartTime,
+  //   meetingEndTime
+  // ]);
 
   // Trigger Excel export simulation
   const handleExportExcel = () => {
@@ -1542,8 +1546,10 @@ export const ReportPage = () => {
     }, 150);
   };
 
-  // Trigger Attendance export simulation
-  const handleExportAttendance = (format: 'CSV' | 'XLSX') => {
+  // Trigger Attendance export (XLSX or PDF)
+  const handleExportAttendance = async (format: 'XLSX' | 'PDF', roster: any[]) => {
+    if (!roster || roster.length === 0) return;
+
     let typeSlug = 'BaoCao';
     switch (attendanceType) {
       case 'Báo cáo theo ngày':
@@ -1555,15 +1561,8 @@ export const ReportPage = () => {
       case 'Báo cáo theo tháng':
         typeSlug = 'BaoCao_TongHopHangThang';
         break;
-      case 'Late Arrivals & Early Leves':
-        typeSlug = 'BaoCao_DiMuonVeSom';
-        break;
-      case 'Absence & Leave Summary':
-        typeSlug = 'BaoCao_VangMatNghiPhep';
-        break;
-      case 'Overtime Hours':
-        typeSlug = 'BaoCao_TangCa';
-        break;
+      default:
+        typeSlug = 'BaoCao_DiemDanh';
     }
     const ext = format.toLowerCase();
     const fileName = `${typeSlug}_${attendanceGroup.replace(/[^a-zA-Z0-9]/g, '')}_${attendanceStartDate.replace(/-/g, '')}_${attendanceEndDate.replace(/-/g, '')}.${ext}`;
@@ -1572,18 +1571,341 @@ export const ReportPage = () => {
     setExporting(true);
     setExportProgress(0);
 
-    const interval = setInterval(() => {
-      setExportProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
+    if (format === 'XLSX') {
+      try {
+        const isDaily = attendanceType === 'Báo cáo theo ngày';
+        const isWeeklyOrMonthly = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+
+        // 1. Create Main Sheet formatted rows
+        const formattedRows = roster.map((item, idx) => {
+          if (isDaily) {
+            return {
+              'STT': idx + 1,
+              'Mã NV': item.ma || '',
+              'Họ và Tên': item.ten || '',
+              'Nhóm / nhóm nhân viên': item.danhSach || '',
+              'Giờ Vào': item.thoiGianVao || 'Trống',
+              'Giờ Ra': item.thoiGianRa || 'Trống',
+              'Tổng giờ': item.totalHours || '0 h',
+            };
+          } else {
+            return {
+              'STT': idx + 1,
+              'Mã NV': item.ma || '',
+              'Họ và Tên': item.ten || '',
+              'Nhóm / nhóm nhân viên': item.danhSach || '',
+              'Tổng giờ': item.totalHours || '0 h',
+            };
+          }
+        });
+
+        const groupNameText = attendanceGroup === 'All'
+          ? 'Tất cả'
+          : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
+
+        const infoRows = [
+          [`BÁO CÁO ĐIỂM DANH - ${attendanceType.toUpperCase()}`, '', '', '', '', '', ''],
+          ['Nhóm:', groupNameText, 'Từ ngày:', attendanceStartDate, '', '', ''],
+          ['Đến ngày:', attendanceEndDate, 'Số lượng nhân sự:', roster.length.toString(), '', '', ''],
+          [],
+        ];
+
+        const wb = XLSX.utils.book_new();
+        const mainSheet = XLSX.utils.aoa_to_sheet(infoRows);
+        XLSX.utils.sheet_add_json(mainSheet, formattedRows, { origin: 'A' + (infoRows.length + 1), skipHeader: false });
+
+        // Styling the main sheet
+        const range = XLSX.utils.decode_range(mainSheet['!ref'] || 'A1:G100');
+        const maxColWidths = [];
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            if (R === 0 || ((R >= 1 && R <= 2) && C >= 4)) continue;
+            const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+            if (!mainSheet[cellRef]) continue;
+            const val = String(mainSheet[cellRef].v || '');
+            const len = val.length;
+            if (!maxColWidths[C] || len > maxColWidths[C]) {
+              maxColWidths[C] = len;
+            }
+          }
+        }
+        mainSheet['!cols'] = maxColWidths.map(w => ({ wch: Math.max(w + 3, 10) }));
+
+        const thinBorder = { style: 'thin', color: { rgb: 'D1D5DB' } };
+
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!mainSheet[cellRef]) {
+              const isMetadataCell = (R >= 1 && R <= 2 && C <= 3);
+              const isTableDetailCell = (R >= 4 && C <= (isDaily ? 6 : 4));
+              if (isMetadataCell || isTableDetailCell) {
+                mainSheet[cellRef] = { t: 's', v: '' };
+              } else {
+                continue;
+              }
+            }
+
+            const cell = mainSheet[cellRef];
+            cell.s = cell.s || {};
+            cell.s.font = { name: 'Segoe UI', sz: 10 };
+
+            if (R === 0) {
+              cell.s.font = { name: 'Segoe UI', sz: 14, bold: true, color: { rgb: '0078D7' } };
+              cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+            } else if (R >= 1 && R <= 2) {
+              const isLabel = C === 0 || C === 2;
+              const isValue = C === 1 || C === 3;
+              if (isLabel || isValue) {
+                cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
+                cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                cell.s.border = {
+                  top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+                };
+                if (isLabel) {
+                  cell.s.fill = { fgColor: { rgb: 'F3F4F6' } };
+                }
+              }
+            } else if (R === 4) {
+              cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } };
+              cell.s.fill = { fgColor: { rgb: '0078D7' } };
+              cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+              cell.s.border = {
+                top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+              };
+            } else if (R > 4) {
+              cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+              cell.s.border = {
+                top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+              };
+            }
+          }
+        }
+
+        mainSheet['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: isDaily ? 6 : 4 } },
+        ];
+
+        const rowHeights = [];
+        rowHeights[0] = { hpx: 40 };
+        for (let i = 1; i <= 2; i++) rowHeights[i] = { hpx: 22 };
+        rowHeights[3] = { hpx: 12 };
+        rowHeights[4] = { hpx: 28 };
+        for (let i = 5; i <= range.e.r; i++) rowHeights[i] = { hpx: 24 };
+        mainSheet['!rows'] = rowHeights;
+
+        XLSX.utils.book_append_sheet(wb, mainSheet, 'TongHopChung');
+
+        // 2. Weekly/Monthly: Add individual sheets for each employee
+        if (isWeeklyOrMonthly) {
+          roster.forEach((emp, empIdx) => {
+            const isWeekly = attendanceType === 'Báo cáo theo tuần';
+            const daysOfWeekNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+            const realLogs = (emp.dailyLogs || []).map((log: any) => {
+              const d = new Date(log.date);
+              const dayName = daysOfWeekNames[d.getDay()];
+              return {
+                dayName,
+                dateStr: log.date,
+                checkIn: log.thoiGianVao || 'Trống',
+                checkOut: log.thoiGianRa || 'Trống',
+                totalHours: log.hours ? `${Math.round(log.hours * 100) / 100} h` : '0 h',
+              };
+            });
+
+            const logs = realLogs.length > 0
+              ? realLogs
+              : (isWeekly
+                ? generateWeeklyLogs(emp.ma, attendanceStartDate)
+                : generateMonthlyLogs(emp.ma, attendanceMonthNumber, attendanceYear));
+
+            const formattedLogs = logs.map((log: any, idx: number) => ({
+              'STT': idx + 1,
+              'Thứ / Ngày': `${log.dayName} (${log.dateStr.split('-').reverse().slice(0, 2).join('/')})`,
+              'Làm lúc': log.checkIn || 'Trống',
+              'Đến lúc': log.checkOut || 'Trống',
+              'Tổng giờ ngày': log.totalHours || '0 h',
+              'Trạng thái': log.checkIn === 'Trống' ? 'Nghỉ' : 'Có mặt',
+            }));
+
+            const empInfoRows = [
+              [`BẢNG CHI TIẾT CHẤM CÔNG - ${emp.ten.toUpperCase()}`, '', '', '', '', ''],
+              ['Mã NV:', emp.ma || '', 'Nhóm:', emp.danhSach || '', '', ''],
+              ['Từ ngày:', attendanceStartDate, 'Đến ngày:', attendanceEndDate, '', ''],
+              [],
+            ];
+
+            const empSheet = XLSX.utils.aoa_to_sheet(empInfoRows);
+            XLSX.utils.sheet_add_json(empSheet, formattedLogs, { origin: 'A' + (empInfoRows.length + 1), skipHeader: false });
+
+            const empRange = XLSX.utils.decode_range(empSheet['!ref'] || 'A1:F50');
+            const empColWidths = [];
+            for (let R = empRange.s.r; R <= empRange.e.r; ++R) {
+              for (let C = empRange.s.c; C <= empRange.e.c; ++C) {
+                if (R === 0 || ((R >= 1 && R <= 2) && C >= 4)) continue;
+                const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+                if (!empSheet[cellRef]) continue;
+                const val = String(empSheet[cellRef].v || '');
+                const len = val.length;
+                if (!empColWidths[C] || len > empColWidths[C]) {
+                  empColWidths[C] = len;
+                }
+              }
+            }
+            empSheet['!cols'] = empColWidths.map(w => ({ wch: Math.max(w + 3, 10) }));
+
+            for (let R = empRange.s.r; R <= empRange.e.r; ++R) {
+              for (let C = empRange.s.c; C <= empRange.e.c; ++C) {
+                const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!empSheet[cellRef]) {
+                  const isMetadataCell = (R >= 1 && R <= 2 && C <= 3);
+                  const isTableDetailCell = (R >= 4 && C <= 5);
+                  if (isMetadataCell || isTableDetailCell) {
+                    empSheet[cellRef] = { t: 's', v: '' };
+                  } else {
+                    continue;
+                  }
+                }
+
+                const cell = empSheet[cellRef];
+                cell.s = cell.s || {};
+                cell.s.font = { name: 'Segoe UI', sz: 10 };
+
+                if (R === 0) {
+                  cell.s.font = { name: 'Segoe UI', sz: 12, bold: true, color: { rgb: '0078D7' } };
+                  cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                } else if (R >= 1 && R <= 2) {
+                  const isLabel = C === 0 || C === 2;
+                  const isValue = C === 1 || C === 3;
+                  if (isLabel || isValue) {
+                    cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
+                    cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                    cell.s.border = {
+                      top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+                    };
+                    if (isLabel) {
+                      cell.s.fill = { fgColor: { rgb: 'F3F4F6' } };
+                    }
+                  }
+                } else if (R === 4) {
+                  cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: 'FFFFFF' } };
+                  cell.s.fill = { fgColor: { rgb: '0078D7' } };
+                  cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                  cell.s.border = {
+                    top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+                  };
+                } else if (R > 4) {
+                  cell.s.alignment = { horizontal: 'center', vertical: 'center' };
+                  cell.s.border = {
+                    top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
+                  };
+                }
+              }
+            }
+
+            empSheet['!merges'] = [
+              { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+            ];
+
+            const empRowHeights = [];
+            empRowHeights[0] = { hpx: 35 };
+            for (let i = 1; i <= 2; i++) empRowHeights[i] = { hpx: 22 };
+            empRowHeights[3] = { hpx: 12 };
+            empRowHeights[4] = { hpx: 26 };
+            for (let i = 5; i <= empRange.e.r; i++) empRowHeights[i] = { hpx: 22 };
+            empSheet['!rows'] = empRowHeights;
+
+            const safeSheetName = (() => {
+              let n = `${emp.ma || empIdx}_${emp.ten}`;
+              n = n.replace(/[\\/?*\[\]]/g, '').substring(0, 31);
+              return n || `NV_${empIdx + 1}`;
+            })();
+
+            XLSX.utils.book_append_sheet(wb, empSheet, safeSheetName);
+          });
+        }
+
+        // 3. Write out buffer and download
+        const buf = XLSX.write(wb, { type: 'binary', bookType: 'xlsx' });
+        const s2ab = (s: string) => {
+          const buf = new ArrayBuffer(s.length);
+          const view = new Uint8Array(buf);
+          for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+          return buf;
+        };
+        const blob = new Blob([s2ab(buf)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        setExportProgress(100);
+        setTimeout(() => {
           setExporting(false);
           setShowExportToast(true);
           setTimeout(() => setShowExportToast(false), 4000);
-          return 100;
+        }, 300);
+      } catch (err) {
+        console.error('Failed to export Excel:', err);
+        alert('Có lỗi xảy ra khi xuất file Excel.');
+        setExporting(false);
+      }
+    } else if (format === 'PDF') {
+      setIsAttendancePdfExporting(true);
+      setPdfAttendanceRoster(roster);
+
+      setTimeout(async () => {
+        const element = document.getElementById('attendance-report-pdf-template');
+        if (!element) {
+          setIsAttendancePdfExporting(false);
+          setExporting(false);
+          return;
         }
-        return prev + 10;
-      });
-    }, 150);
+
+        try {
+          const canvas = await html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            allowTaint: true,
+          });
+          const imgData = canvas.toDataURL('image/png');
+
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const imgWidth = 210; // A4 width in mm
+          const pageHeight = 295; // A4 height in mm
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          let heightLeft = imgHeight;
+          let position = 0;
+
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+
+          while (heightLeft >= 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
+
+          pdf.save(fileName.replace('.xlsx', '.pdf'));
+          setExportProgress(100);
+          setShowExportToast(true);
+          setTimeout(() => setShowExportToast(false), 4000);
+        } catch (err) {
+          console.error('Failed to generate PDF:', err);
+          alert('Có lỗi xảy ra khi tạo file PDF.');
+        } finally {
+          setIsAttendancePdfExporting(false);
+          setExporting(false);
+        }
+      }, 200);
+    }
   };
 
   // Helper for generating custom user avatar placeholders
@@ -2146,707 +2468,704 @@ export const ReportPage = () => {
           </div>
         </div>
       ) : activeTab === 'attendance' ? (
-        /* Tab 2 Content: Báo cáo chấm công (Report Builder) */
-        <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6 relative min-h-[400px]">
-          <div className={`flex flex-col space-y-6 flex-1 transition-all duration-300 ${!showAttendanceReportDemo ? 'blur-sm pointer-events-none select-none' : ''}`}>
+        (() => {
+          const isDaily = attendanceType === 'Báo cáo theo ngày';
+          const isWeeklyOrMonthly = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+          const showRightSidebar = !isWeeklyOrMonthly;
 
-            {/* REPORT BUILDER CONTROLS PANEL */}
-            <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-6 shadow-2xl relative">
-              <div className="flex items-center justify-between mb-5 border-b border-[#21232d] pb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-100 tracking-tight">Report Builder</h3>
-                </div>
-              </div>
+          const selectedGroupNameForFilter = attendanceGroup === 'All'
+            ? 'All'
+            : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
 
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
-                {/* Type Select */}
-                <div className="md:col-span-2 space-y-2 text-left relative">
-                  <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Type</label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAttTypeOpen(!isAttTypeOpen);
-                        setIsAttGroupOpen(false);
-                        setIsAttendanceAreaDropdownOpen(false);
-                        setIsAttExportOpen(false);
-                      }}
-                      className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
-                    >
-                      <span className="font-medium text-slate-200">{attendanceType}</span>
-                      <ChevronDown size={14} className="text-slate-400" />
-                    </button>
-                    {isAttTypeOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setIsAttTypeOpen(false)} />
-                        <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
-                          {[
-                            'Báo cáo theo ngày',
-                            'Báo cáo theo tuần',
-                            'Báo cáo theo tháng',
-                            // 'Late Arrivals & Early Leves',
-                            // 'Absence & Leave Summary',
-                            // 'Overtime Hours'
-                          ].map((typeOption) => (
-                            <button
-                              key={typeOption}
-                              type="button"
-                              onClick={() => {
-                                setAttendanceType(typeOption);
-                                setIsAttTypeOpen(false);
-                              }}
-                              className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceType === typeOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
-                                }`}
-                            >
-                              <span>{typeOption}</span>
-                              {attendanceType === typeOption && <Check size={14} className="text-[#00a2e8]" />}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
+          // Daily roster: real employees from DB
+          const activeRealEmployees = employees.filter(emp => {
+            if (selectedGroupNameForFilter === 'All') return true;
+            const groups: string[] = emp.human_group || [];
+            return groups.some((g: string) => g.toLowerCase() === selectedGroupNameForFilter.toLowerCase());
+          });
+
+          const dailyRoster = (() => {
+            return activeRealEmployees.map((emp: any) => {
+              const match = dailyReportData.find((item: any) => item.employeeId === emp.id);
+              const thoiGianVao = match ? (match.thoiGianVao || 'Trống') : 'Trống';
+              const thoiGianRa = match ? (match.thoiGianRa || 'Trống') : 'Trống';
+              const entryEvent = match ? (match.entryEvent || null) : null;
+              const exitEvent = match ? (match.exitEvent || null) : null;
+              return {
+                id: emp.id,
+                ma: emp.maGiayTo || '',
+                ten: emp.hoTen || '',
+                danhSach: (emp.human_group || []).join(', ') || 'Khách hàng / Khác',
+                thoiGianVao,
+                thoiGianRa,
+                entryEvent,
+                exitEvent,
+                totalHours: calculateWorkHours(thoiGianVao, thoiGianRa),
+              };
+            });
+          })();
+
+          // Range roster: from activeRealEmployees enriched by rangeReportData (weekly / monthly)
+          const rangeRoster = activeRealEmployees.map((emp: any) => {
+            const match = rangeReportData.find((item: any) => item.employeeId === emp.id);
+            const th = match ? Math.round(match.totalHours * 100) / 100 : 0;
+            return {
+              id: emp.id,
+              ma: emp.maGiayTo || '',
+              ten: emp.hoTen || '',
+              danhSach: (emp.human_group || []).join(', ') || 'Khách hàng / Khác',
+              thoiGianVao: '',
+              thoiGianRa: '',
+              entryEvent: null,
+              exitEvent: null,
+              totalHours: `${th} h`,
+              dailyLogs: match?.dailyLogs || [],
+            };
+          });
+
+          const activeEmployees = isDaily ? dailyRoster : rangeRoster;
+          const selectedAttendee = activeEmployees.find(emp => emp.ma === selectedAttendanceEmpCode) || activeEmployees[0];
+
+          return (
+            <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6 relative min-h-[400px]">
+              <div className={`flex flex-col space-y-6 flex-1 transition-all duration-300 ${!showAttendanceReportDemo ? 'blur-sm pointer-events-none select-none' : ''}`}>
+
+                {/* REPORT BUILDER CONTROLS PANEL */}
+                <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-6 shadow-2xl relative">
+                  <div className="flex items-center justify-between mb-5 border-b border-[#21232d] pb-4">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-100 tracking-tight">Report Builder</h3>
+                    </div>
                   </div>
-                </div>
 
-                {/* Chọn nhóm Select */}
-                <div className="md:col-span-2 space-y-2 text-left relative">
-                  <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn nhóm</label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAttGroupOpen(!isAttGroupOpen);
-                        setIsAttTypeOpen(false);
-                        setIsAttendanceAreaDropdownOpen(false);
-                        setIsAttExportOpen(false);
-                      }}
-                      className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
-                    >
-                      <span className="font-medium text-slate-200">
-                        {(() => {
-                          if (attendanceGroup === 'All') return 'Tất cả (All)';
-                          const matched = humanGroups.find(g => g.id === attendanceGroup);
-                          return matched ? matched.name : attendanceGroup;
-                        })()}
-                      </span>
-                      <ChevronDown size={14} className="text-slate-400" />
-                    </button>
-                    {isAttGroupOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setIsAttGroupOpen(false)} />
-                        <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
-                          {[
-                            { id: 'All', name: 'Tất cả (All)' },
-                            ...humanGroups
-                          ].map((grpOption) => (
-                            <button
-                              key={grpOption.id}
-                              type="button"
-                              onClick={() => {
-                                setAttendanceGroup(grpOption.id);
-                                setIsAttGroupOpen(false);
-                              }}
-                              className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceGroup === grpOption.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
-                                }`}
-                            >
-                              <span>{grpOption.name}</span>
-                              {attendanceGroup === grpOption.id && <Check size={14} className="text-[#00a2e8]" />}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Khu vực Multiselect Select */}
-                <div className="md:col-span-2 space-y-2 text-left relative">
-                  <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Khu vực</label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAttendanceAreaDropdownOpen(!isAttendanceAreaDropdownOpen);
-                        setIsAttTypeOpen(false);
-                        setIsAttGroupOpen(false);
-                        setIsAttExportOpen(false);
-                      }}
-                      className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
-                    >
-                      <span className="truncate pr-1">
-                        {(() => {
-                          if (selectedAttendanceAreas.length === 0) return 'Chưa chọn';
-                          if (selectedAttendanceAreas.length === areasData.length) return `Tất cả (${areasData.length} KV)`;
-                          return selectedAttendanceAreas.join(', ');
-                        })()}
-                      </span>
-                      <ChevronDown size={14} className={`text-slate-400 transition-transform ${isAttendanceAreaDropdownOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {isAttendanceAreaDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-30" onClick={() => setIsAttendanceAreaDropdownOpen(false)} />
-                        <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 p-2 space-y-1 w-[200px]">
-                          <div className="flex justify-between border-b border-[#2d2f3c]/60 pb-1.5 mb-1.5 px-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedAttendanceAreas(areasData.map(a => a.name))}
-                              className="text-[10px] text-[#00a2e8] hover:underline font-semibold"
-                            >
-                              Chọn tất cả
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedAttendanceAreas([])}
-                              className="text-[10px] text-slate-400 hover:underline font-semibold"
-                            >
-                              Bỏ chọn
-                            </button>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {areasData.map((area) => {
-                              const areaName = area.name;
-                              const isChecked = selectedAttendanceAreas.includes(areaName);
-                              return (
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
+                    {/* Type Select */}
+                    <div className="md:col-span-2 space-y-2 text-left relative">
+                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Type</label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttTypeOpen(!isAttTypeOpen);
+                            setIsAttGroupOpen(false);
+                            setIsAttendanceAreaDropdownOpen(false);
+                            setIsAttExportOpen(false);
+                          }}
+                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                        >
+                          <span className="font-medium text-slate-200">{attendanceType}</span>
+                          <ChevronDown size={14} className="text-slate-400" />
+                        </button>
+                        {isAttTypeOpen && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={() => setIsAttTypeOpen(false)} />
+                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
+                              {[
+                                'Báo cáo theo ngày',
+                                'Báo cáo theo tuần',
+                                'Báo cáo theo tháng',
+                                // 'Late Arrivals & Early Leves',
+                                // 'Absence & Leave Summary',
+                                // 'Overtime Hours'
+                              ].map((typeOption) => (
                                 <button
-                                  key={area.id}
+                                  key={typeOption}
                                   type="button"
                                   onClick={() => {
-                                    if (isChecked) {
-                                      setSelectedAttendanceAreas(selectedAttendanceAreas.filter(a => a !== areaName));
-                                    } else {
-                                      setSelectedAttendanceAreas([...selectedAttendanceAreas, areaName]);
-                                    }
+                                    setAttendanceType(typeOption);
+                                    setIsAttTypeOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-2 py-1.5 rounded text-left text-xs text-slate-200 hover:bg-[#20212a] transition cursor-pointer"
-                                >
-                                  <span className="truncate mr-2">{areaName}</span>
-                                  <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all ${isChecked
-                                    ? 'border-[#00a2e8] bg-[#00a2e8]'
-                                    : 'border-[#2d2f3c] bg-[#111218]'
-                                    }`}>
-                                    {isChecked && <Check size={10} className="text-white font-bold" />}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Conditional Date Filter rendering */}
-                {attendanceType === 'Báo cáo theo ngày' ? (
-                  /* Single Date Selector for Daily Summary */
-                  <div className="md:col-span-4 space-y-2 text-left relative">
-                    <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn ngày</label>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={attendanceStartDate}
-                        onChange={(e) => {
-                          setAttendanceStartDate(e.target.value);
-                          setAttendanceEndDate(e.target.value);
-                        }}
-                        className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
-                      />
-                    </div>
-                  </div>
-                ) : attendanceType === 'Báo cáo theo tuần' ? (
-                  /* Week Selector for Weekly Summary */
-                  <div className="md:col-span-4 space-y-2 text-left relative">
-                    <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn tuần</label>
-                    <div className="flex items-center space-x-2 h-[42px]">
-                      {/* Week selector container */}
-                      <div className="flex items-center space-x-1 bg-[#1c1d26] border border-[#2d2f3c] rounded-xl overflow-hidden h-full px-2">
-                        <span className="text-xs text-slate-400 font-semibold pr-1">Tuần</span>
-                        <button
-                          type="button"
-                          onClick={() => setAttendanceWeekNumber(prev => Math.max(1, prev - 1))}
-                          className="p-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] rounded transition-colors"
-                          title="Tuần trước"
-                        >
-                          <ChevronDown size={14} className="rotate-90" />
-                        </button>
-                        <input
-                          type="number"
-                          min={1}
-                          max={53}
-                          value={attendanceWeekNumber}
-                          onChange={(e) => {
-                            const val = Math.max(1, Math.min(53, parseInt(e.target.value, 10) || 1));
-                            setAttendanceWeekNumber(val);
-                          }}
-                          className="w-10 bg-transparent text-xs text-white text-center font-mono focus:outline-none [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setAttendanceWeekNumber(prev => Math.min(53, prev + 1))}
-                          className="p-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] rounded transition-colors"
-                          title="Tuần sau"
-                        >
-                          <ChevronDown size={14} className="-rotate-90" />
-                        </button>
-                      </div>
-
-                      {/* Year Selector */}
-                      <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
-                        <span className="text-xs text-slate-400 font-semibold pr-2">Năm</span>
-                        <input
-                          type="number"
-                          min={2000}
-                          max={2100}
-                          value={attendanceYear}
-                          onChange={(e) => {
-                            const val = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
-                            setAttendanceYear(val);
-                          }}
-                          className="w-full bg-transparent text-xs text-white text-center font-mono focus:outline-none h-full"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : attendanceType === 'Báo cáo theo tháng' ? (
-                  /* Month Selector for Monthly Summary */
-                  <div className="md:col-span-4 space-y-2 text-left relative">
-                    <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn tháng</label>
-                    <div className="flex items-center space-x-2 h-[42px]">
-                      {/* Month selector container */}
-                      <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
-                        <span className="text-xs text-slate-400 font-semibold pr-2">Tháng</span>
-                        <select
-                          value={attendanceMonthNumber}
-                          onChange={(e) => setAttendanceMonthNumber(Number(e.target.value))}
-                          className="w-full bg-transparent text-xs text-white focus:outline-none h-full appearance-none cursor-pointer font-mono"
-                        >
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                            <option key={m} value={m} className="bg-[#181921] text-white">
-                              {m}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={12} className="text-slate-400 shrink-0 pointer-events-none ml-1" />
-                      </div>
-
-                      {/* Year Selector */}
-                      <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
-                        <span className="text-xs text-slate-400 font-semibold pr-2">Năm</span>
-                        <input
-                          type="number"
-                          min={2000}
-                          max={2100}
-                          value={attendanceYear}
-                          onChange={(e) => {
-                            const val = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
-                            setAttendanceYear(val);
-                          }}
-                          className="w-full bg-transparent text-xs text-white text-center font-mono focus:outline-none h-full"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Start Date */}
-                    <div className="md:col-span-2 space-y-2 text-left relative">
-                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Start Date</label>
-                      <div className="relative">
-                        <input
-                          type="date"
-                          value={attendanceStartDate}
-                          onChange={(e) => setAttendanceStartDate(e.target.value)}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* End Date */}
-                    <div className="md:col-span-2 space-y-2 text-left relative">
-                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">End Date</label>
-                      <div className="relative">
-                        <input
-                          type="date"
-                          value={attendanceEndDate}
-                          onChange={(e) => setAttendanceEndDate(e.target.value)}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Combined Export Split Button (CSV Dropdown) */}
-                <div className="md:col-span-2 flex items-center justify-end relative h-[42px]">
-                  <div className="flex h-full w-full rounded-xl overflow-hidden shadow-lg border border-[#2d2f3c] bg-[#1c1d26]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleExportAttendance(attendanceExportFormat);
-                      }}
-                      className="flex-1 flex items-center justify-center space-x-2 bg-[#00a2e8] hover:bg-[#008cc9] text-white text-xs font-bold uppercase tracking-wider transition-colors duration-150 cursor-pointer h-full"
-                    >
-                      <Download size={14} />
-                      <span>{attendanceExportFormat}</span>
-                    </button>
-
-                    <div className="w-[1px] bg-[#008cc9] h-full" />
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAttExportOpen(!isAttExportOpen);
-                        setIsAttTypeOpen(false);
-                        setIsAttGroupOpen(false);
-                      }}
-                      className="px-3 bg-[#00a2e8] hover:bg-[#008cc9] text-white flex items-center justify-center transition-colors duration-150 cursor-pointer h-full"
-                    >
-                      <ChevronDown size={13} className={`transition-transform duration-200 ${isAttExportOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                  </div>
-
-                  {isAttExportOpen && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setIsAttExportOpen(false)} />
-                      <div className="absolute right-0 top-12 mt-1 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 w-48 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAttendanceExportFormat('CSV');
-                            setIsAttExportOpen(false);
-                            handleExportAttendance('CSV');
-                          }}
-                          className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
-                        >
-                          <span>Xuất tệp CSV (.csv)</span>
-                          {attendanceExportFormat === 'CSV' && <Check size={14} className="text-[#00a2e8]" />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAttendanceExportFormat('XLSX');
-                            setIsAttExportOpen(false);
-                            handleExportAttendance('XLSX');
-                          }}
-                          className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
-                        >
-                          <span>Xuất tệp Excel (.xlsx)</span>
-                          {attendanceExportFormat === 'XLSX' && <Check size={14} className="text-[#00a2e8]" />}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* HIGH FIDELITY REPORT TABLE */}
-            {(attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng') && selectedWeeklyAttendee ? (
-              /* Weekly/Monthly Details Sub-view Page */
-              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col flex-1">
-                {/* Header */}
-                <div className="p-4 bg-[#181921] border-b border-[#21232d] flex items-center justify-between gap-3 shrink-0">
-                  <div className="flex items-center space-x-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWeeklyAttendee(null)}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#20212a] hover:bg-[#2d2f3e] border border-[#2d2f3c] text-xs font-bold text-slate-300 hover:text-white transition-all cursor-pointer focus:outline-none"
-                    >
-                      <ArrowLeft size={13} />
-                      <span>Quay lại</span>
-                    </button>
-                    <div className="h-6 w-px bg-[#2d2f3c] mx-1" />
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-200">
-                        Chi tiết chấm công {attendanceType === 'Báo cáo theo tuần' ? 'tuần' : 'tháng'}: <span className="text-[#00a2e8]">{selectedWeeklyAttendee.ten}</span>
-                      </h4>
-                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        Mã NV: {selectedWeeklyAttendee.ma} • Nhóm: {selectedWeeklyAttendee.danhSach} • {attendanceType === 'Báo cáo theo tuần' ? `Tuần ${attendanceWeekNumber}` : `Tháng ${attendanceMonthNumber}`} ({attendanceStartDate} - {attendanceEndDate})
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Body (Split columns) */}
-                {(() => {
-                  const isWeekly = attendanceType === 'Báo cáo theo tuần';
-                  const daysOfWeekNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
-                  
-                  // Use real dailyLogs from API if available
-                  const realLogs = (selectedWeeklyAttendee.dailyLogs || []).map((log: any) => {
-                    const d = new Date(log.date);
-                    const dayName = daysOfWeekNames[d.getDay()];
-                    return {
-                      dayName,
-                      dateStr: log.date,
-                      checkIn: log.thoiGianVao || 'Trống',
-                      checkOut: log.thoiGianRa || 'Trống',
-                      totalHours: log.hours ? `${Math.round(log.hours * 100) / 100} h` : '0 h',
-                      entryEvent: log.entryEvent || null,
-                      exitEvent: log.exitEvent || null,
-                    };
-                  });
-
-                  const logs = realLogs.length > 0
-                    ? realLogs
-                    : (isWeekly
-                        ? generateWeeklyLogs(selectedWeeklyAttendee.ma, attendanceStartDate)
-                        : generateMonthlyLogs(selectedWeeklyAttendee.ma, attendanceMonthNumber, attendanceYear));
-                  const activeLog = logs.find(log => log.dateStr === selectedDetailDayStr) || logs[0];
-
-                  return (
-                    <div className="flex-1 flex overflow-hidden min-h-[350px]">
-                      {/* Left Column: Days list */}
-                      <div className="flex-1 overflow-auto border-r border-[#21232d]/40">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                              <th className="py-3 px-4">Thứ / Ngày</th>
-                              <th className="py-3 px-4">Làm lúc</th>
-                              <th className="py-3 px-4">Đến lúc</th>
-                              <th className="py-3 px-4 text-center">Tổng giờ ngày</th>
-                              <th className="py-3 px-4 text-center">Trạng thái</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
-                            {logs.map((log) => {
-                              const isSelected = activeLog.dateStr === log.dateStr;
-                              const hasNoLog = log.checkIn === 'Trống';
-
-                              return (
-                                <tr
-                                  key={log.dateStr}
-                                  onClick={() => setSelectedDetailDayStr(log.dateStr)}
-                                  className={`cursor-pointer transition-colors ${isSelected
-                                    ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
-                                    : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                  className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceType === typeOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
                                     }`}
                                 >
-                                  <td className={`py-3 px-4 font-sans font-medium ${isSelected ? 'text-[#00a2e8]' : 'text-slate-100'}`}>
-                                    {log.dayName} <span className="text-[10px] text-slate-500 font-mono ml-1">({log.dateStr.split('-').reverse().slice(0, 2).join('/')})</span>
-                                  </td>
-                                  <td className={`py-3 px-4 ${hasNoLog ? 'text-slate-500' : 'text-slate-300'}`}>
-                                    {log.checkIn}
-                                  </td>
-                                  <td className={`py-3 px-4 ${hasNoLog ? 'text-slate-500' : 'text-slate-300'}`}>
-                                    {log.checkOut}
-                                  </td>
-                                  <td className={`py-3 px-4 text-center font-semibold ${hasNoLog ? 'text-slate-500' : 'text-emerald-400'}`}>
-                                    {log.totalHours}
-                                  </td>
-                                  <td className="py-3 px-4 text-center">
-                                    {hasNoLog ? (
-                                      <span className="px-2 py-0.5 rounded text-[9px] font-sans font-medium bg-slate-500/10 text-slate-500 border border-slate-500/10">Nghỉ</span>
-                                    ) : (
-                                      <span className="px-2 py-0.5 rounded text-[9px] font-sans font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Có mặt</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Right Column: Camera photos for selected day */}
-                      <div className="w-80 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
-                        {activeLog && activeLog.checkIn !== 'Trống' ? (
-                          <div className="p-4 space-y-4 text-left">
-                            <div className="pb-3 border-b border-[#2d2f3c]/60">
-                              <h4 className="font-bold text-xs text-white uppercase tracking-wider">
-                                Ảnh Camera - {activeLog.dayName}
-                              </h4>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                Ngày: {activeLog.dateStr.split('-').reverse().join('/')}
-                              </p>
+                                  <span>{typeOption}</span>
+                                  {attendanceType === typeOption && <Check size={14} className="text-[#00a2e8]" />}
+                                </button>
+                              ))}
                             </div>
-
-                            {/* Entry Photo */}
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào</span>
-                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${activeLog.checkIn === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
-                                  {activeLog.checkIn}
-                                </span>
-                              </div>
-                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
-                                {activeLog.entryEvent?.cropped_face_images?.[0] ? (
-                                  <>
-                                    <img
-                                      src={activeLog.entryEvent.cropped_face_images[0]}
-                                      alt="Check-in"
-                                      className="w-full h-full object-cover"
-                                    />
-                                    <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
-                                      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
-                                      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
-                                      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
-                                      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
-                                    </div>
-                                    <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
-                                      Ảnh check-in
-                                    </span>
-                                  </>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
-                                    <CameraOff size={28} />
-                                    <span className="text-[10px] font-mono">Không có ảnh</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Exit Photo */}
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra</span>
-                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${activeLog.checkOut === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
-                                  {activeLog.checkOut}
-                                </span>
-                              </div>
-                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
-                                {activeLog.exitEvent?.cropped_face_images?.[0] ? (
-                                  <>
-                                    <img
-                                      src={activeLog.exitEvent.cropped_face_images[0]}
-                                      alt="Check-out"
-                                      className="w-full h-full object-cover"
-                                    />
-                                    <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
-                                      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
-                                      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
-                                      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
-                                      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
-                                    </div>
-                                    <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
-                                      Ảnh check-out
-                                    </span>
-                                  </>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
-                                    <CameraOff size={28} />
-                                    <span className="text-[10px] font-mono">Không có ảnh</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-2">
-                            <Clock size={28} className="text-slate-600 animate-pulse" />
-                            <p className="text-xs">Không có dữ liệu camera</p>
-                            <p className="text-[10px] text-slate-600 max-w-[200px]">Nhân viên không có bản ghi ra vào trong ngày {activeLog ? activeLog.dayName : 'này'}.</p>
-                          </div>
+                          </>
                         )}
                       </div>
                     </div>
-                  );
-                })()}
-              </div>
-            ) : (
-              /* HIGH FIDELITY REPORT TABLE */
-              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col flex-1">
-                <div className="p-4 bg-[#181921] border-b border-[#21232d] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-                  <div className="flex items-center space-x-2">
-                    <span className="p-1.5 rounded-lg bg-[#00a2e8]/10 border border-[#00a2e8]/20 text-[#00a2e8]">
-                      <FileText size={15} />
-                    </span>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-200">Dữ liệu Báo cáo: {attendanceType}</h4>
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        {attendanceType === 'Báo cáo theo ngày'
-                          ? `Ngày: ${attendanceStartDate}`
-                          : `Từ ${attendanceStartDate} đến ${attendanceEndDate}`
-                        } • Nhóm: {attendanceGroup === 'All' ? 'Tất cả' : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup)}
-                      </p>
+
+                    {/* Chọn nhóm Select */}
+                    <div className="md:col-span-2 space-y-2 text-left relative">
+                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn nhóm</label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttGroupOpen(!isAttGroupOpen);
+                            setIsAttTypeOpen(false);
+                            setIsAttendanceAreaDropdownOpen(false);
+                            setIsAttExportOpen(false);
+                          }}
+                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                        >
+                          <span className="font-medium text-slate-200">
+                            {(() => {
+                              if (attendanceGroup === 'All') return 'Tất cả (All)';
+                              const matched = humanGroups.find(g => g.id === attendanceGroup);
+                              return matched ? matched.name : attendanceGroup;
+                            })()}
+                          </span>
+                          <ChevronDown size={14} className="text-slate-400" />
+                        </button>
+                        {isAttGroupOpen && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={() => setIsAttGroupOpen(false)} />
+                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
+                              {[
+                                { id: 'All', name: 'Tất cả (All)' },
+                                ...humanGroups
+                              ].map((grpOption) => (
+                                <button
+                                  key={grpOption.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setAttendanceGroup(grpOption.id);
+                                    setIsAttGroupOpen(false);
+                                  }}
+                                  className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceGroup === grpOption.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
+                                    }`}
+                                >
+                                  <span>{grpOption.name}</span>
+                                  {attendanceGroup === grpOption.id && <Check size={14} className="text-[#00a2e8]" />}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Khu vực Multiselect Select */}
+                    <div className="md:col-span-2 space-y-2 text-left relative">
+                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Khu vực</label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttendanceAreaDropdownOpen(!isAttendanceAreaDropdownOpen);
+                            setIsAttTypeOpen(false);
+                            setIsAttGroupOpen(false);
+                            setIsAttExportOpen(false);
+                          }}
+                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                        >
+                          <span className="truncate pr-1">
+                            {(() => {
+                              if (selectedAttendanceAreas.length === 0) return 'Chưa chọn';
+                              if (selectedAttendanceAreas.length === areasData.length) return `Tất cả (${areasData.length} KV)`;
+                              return selectedAttendanceAreas.join(', ');
+                            })()}
+                          </span>
+                          <ChevronDown size={14} className={`text-slate-400 transition-transform ${isAttendanceAreaDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isAttendanceAreaDropdownOpen && (
+                          <>
+                            <div className="fixed inset-0 z-30" onClick={() => setIsAttendanceAreaDropdownOpen(false)} />
+                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 p-2 space-y-1 w-[200px]">
+                              <div className="flex justify-between border-b border-[#2d2f3c]/60 pb-1.5 mb-1.5 px-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAttendanceAreas(areasData.map(a => a.name))}
+                                  className="text-[10px] text-[#00a2e8] hover:underline font-semibold"
+                                >
+                                  Chọn tất cả
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAttendanceAreas([])}
+                                  className="text-[10px] text-slate-400 hover:underline font-semibold"
+                                >
+                                  Bỏ chọn
+                                </button>
+                              </div>
+                              <div className="max-h-48 overflow-y-auto space-y-1">
+                                {areasData.map((area) => {
+                                  const areaName = area.name;
+                                  const isChecked = selectedAttendanceAreas.includes(areaName);
+                                  return (
+                                    <button
+                                      key={area.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isChecked) {
+                                          setSelectedAttendanceAreas(selectedAttendanceAreas.filter(a => a !== areaName));
+                                        } else {
+                                          setSelectedAttendanceAreas([...selectedAttendanceAreas, areaName]);
+                                        }
+                                      }}
+                                      className="w-full flex items-center justify-between px-2 py-1.5 rounded text-left text-xs text-slate-200 hover:bg-[#20212a] transition cursor-pointer"
+                                    >
+                                      <span className="truncate mr-2">{areaName}</span>
+                                      <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all ${isChecked
+                                        ? 'border-[#00a2e8] bg-[#00a2e8]'
+                                        : 'border-[#2d2f3c] bg-[#111218]'
+                                        }`}>
+                                        {isChecked && <Check size={10} className="text-white font-bold" />}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Conditional Date Filter rendering */}
+                    {attendanceType === 'Báo cáo theo ngày' ? (
+                      /* Single Date Selector for Daily Summary */
+                      <div className="md:col-span-4 space-y-2 text-left relative">
+                        <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn ngày</label>
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={attendanceStartDate}
+                            onChange={(e) => {
+                              setAttendanceStartDate(e.target.value);
+                              setAttendanceEndDate(e.target.value);
+                            }}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
+                          />
+                        </div>
+                      </div>
+                    ) : attendanceType === 'Báo cáo theo tuần' ? (
+                      /* Week Selector for Weekly Summary */
+                      <div className="md:col-span-4 space-y-2 text-left relative">
+                        <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn tuần</label>
+                        <div className="flex items-center space-x-2 h-[42px]">
+                          {/* Week selector container */}
+                          <div className="flex items-center space-x-1 bg-[#1c1d26] border border-[#2d2f3c] rounded-xl overflow-hidden h-full px-2">
+                            <span className="text-xs text-slate-400 font-semibold pr-1">Tuần</span>
+                            <button
+                              type="button"
+                              onClick={() => setAttendanceWeekNumber(prev => Math.max(1, prev - 1))}
+                              className="p-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] rounded transition-colors"
+                              title="Tuần trước"
+                            >
+                              <ChevronDown size={14} className="rotate-90" />
+                            </button>
+                            <input
+                              type="number"
+                              min={1}
+                              max={53}
+                              value={attendanceWeekNumber}
+                              onChange={(e) => {
+                                const val = Math.max(1, Math.min(53, parseInt(e.target.value, 10) || 1));
+                                setAttendanceWeekNumber(val);
+                              }}
+                              className="w-10 bg-transparent text-xs text-white text-center font-mono focus:outline-none [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setAttendanceWeekNumber(prev => Math.min(53, prev + 1))}
+                              className="p-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] rounded transition-colors"
+                              title="Tuần sau"
+                            >
+                              <ChevronDown size={14} className="-rotate-90" />
+                            </button>
+                          </div>
+
+                          {/* Year Selector */}
+                          <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
+                            <span className="text-xs text-slate-400 font-semibold pr-2">Năm</span>
+                            <input
+                              type="number"
+                              min={2000}
+                              max={2100}
+                              value={attendanceYear}
+                              onChange={(e) => {
+                                const val = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
+                                setAttendanceYear(val);
+                              }}
+                              className="w-full bg-transparent text-xs text-white text-center font-mono focus:outline-none h-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : attendanceType === 'Báo cáo theo tháng' ? (
+                      /* Month Selector for Monthly Summary */
+                      <div className="md:col-span-4 space-y-2 text-left relative">
+                        <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn tháng</label>
+                        <div className="flex items-center space-x-2 h-[42px]">
+                          {/* Month selector container */}
+                          <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
+                            <span className="text-xs text-slate-400 font-semibold pr-2">Tháng</span>
+                            <select
+                              value={attendanceMonthNumber}
+                              onChange={(e) => setAttendanceMonthNumber(Number(e.target.value))}
+                              className="w-full bg-transparent text-xs text-white focus:outline-none h-full appearance-none cursor-pointer font-mono"
+                            >
+                              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                                <option key={m} value={m} className="bg-[#181921] text-white">
+                                  {m}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown size={12} className="text-slate-400 shrink-0 pointer-events-none ml-1" />
+                          </div>
+
+                          {/* Year Selector */}
+                          <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
+                            <span className="text-xs text-slate-400 font-semibold pr-2">Năm</span>
+                            <input
+                              type="number"
+                              min={2000}
+                              max={2100}
+                              value={attendanceYear}
+                              onChange={(e) => {
+                                const val = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
+                                setAttendanceYear(val);
+                              }}
+                              className="w-full bg-transparent text-xs text-white text-center font-mono focus:outline-none h-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Start Date */}
+                        <div className="md:col-span-2 space-y-2 text-left relative">
+                          <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Start Date</label>
+                          <div className="relative">
+                            <input
+                              type="date"
+                              value={attendanceStartDate}
+                              onChange={(e) => setAttendanceStartDate(e.target.value)}
+                              className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* End Date */}
+                        <div className="md:col-span-2 space-y-2 text-left relative">
+                          <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">End Date</label>
+                          <div className="relative">
+                            <input
+                              type="date"
+                              value={attendanceEndDate}
+                              onChange={(e) => setAttendanceEndDate(e.target.value)}
+                              className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Combined Export Split Button (XLSX Dropdown) */}
+                    <div className="md:col-span-2 flex items-center justify-end relative h-[42px]">
+                      <div className="flex h-full w-full rounded-xl overflow-hidden shadow-lg border border-[#2d2f3c] bg-[#1c1d26]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleExportAttendance(attendanceExportFormat, activeEmployees);
+                          }}
+                          className="flex-1 flex items-center justify-center space-x-2 bg-[#00a2e8] hover:bg-[#008cc9] text-white text-xs font-bold uppercase tracking-wider transition-colors duration-150 cursor-pointer h-full"
+                        >
+                          <Download size={14} />
+                          <span>{attendanceExportFormat}</span>
+                        </button>
+
+                        <div className="w-[1px] bg-[#008cc9] h-full" />
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAttExportOpen(!isAttExportOpen);
+                            setIsAttTypeOpen(false);
+                            setIsAttGroupOpen(false);
+                          }}
+                          className="px-3 bg-[#00a2e8] hover:bg-[#008cc9] text-white flex items-center justify-center transition-colors duration-150 cursor-pointer h-full"
+                        >
+                          <ChevronDown size={13} className={`transition-transform duration-200 ${isAttExportOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+
+                      {isAttExportOpen && (
+                        <>
+                          <div className="fixed inset-0 z-30" onClick={() => setIsAttExportOpen(false)} />
+                          <div className="absolute right-0 top-12 mt-1 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 w-48 overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAttendanceExportFormat('XLSX');
+                                setIsAttExportOpen(false);
+                                handleExportAttendance('XLSX', activeEmployees);
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
+                            >
+                              <span>Xuất tệp Excel (.xlsx)</span>
+                              {attendanceExportFormat === 'XLSX' && <Check size={14} className="text-[#00a2e8]" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAttendanceExportFormat('PDF');
+                                setIsAttExportOpen(false);
+                                handleExportAttendance('PDF', activeEmployees);
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
+                            >
+                              <span>Xuất tệp PDF (.pdf)</span>
+                              {attendanceExportFormat === 'PDF' && <Check size={14} className="text-[#00a2e8]" />}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {(() => {
-                    const isDaily = attendanceType === 'Báo cáo theo ngày';
-                    const isRange = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
-                    const selectedGroupNameCount = attendanceGroup === 'All'
-                      ? 'All'
-                      : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
-                    let activeCount = 0;
-                    if (isDaily) {
-                      activeCount = selectedGroupNameCount === 'All'
-                        ? employees.length
-                        : employees.filter(emp => {
-                          const groups: string[] = emp.human_group || [];
-                          return groups.some((g: string) => g.toLowerCase() === selectedGroupNameCount.toLowerCase());
-                        }).length;
-                    } else if (isRange) {
-                      activeCount = rangeReportData.length;
-                    }
-                    return (
-                      <div className="text-[11px] font-mono text-slate-400">
-                        Phát hiện: <span className="text-white font-bold font-mono">{activeCount}</span> nhân sự
-                      </div>
-                    );
-                  })()}
                 </div>
 
-                {(() => {
-                  const isDaily = attendanceType === 'Báo cáo theo ngày';
-                  const isWeeklyOrMonthly = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
-                  const showRightSidebar = !isWeeklyOrMonthly;
+                {/* HIGH FIDELITY REPORT TABLE */}
+                {(attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng') && selectedWeeklyAttendee ? (
+                  /* Weekly/Monthly Details Sub-view Page */
+                  <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col flex-1">
+                    {/* Header */}
+                    <div className="p-4 bg-[#181921] border-b border-[#21232d] flex items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center space-x-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWeeklyAttendee(null)}
+                          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#20212a] hover:bg-[#2d2f3e] border border-[#2d2f3c] text-xs font-bold text-slate-300 hover:text-white transition-all cursor-pointer focus:outline-none"
+                        >
+                          <ArrowLeft size={13} />
+                          <span>Quay lại</span>
+                        </button>
+                        <div className="h-6 w-px bg-[#2d2f3c] mx-1" />
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-200">
+                            Chi tiết chấm công {attendanceType === 'Báo cáo theo tuần' ? 'tuần' : 'tháng'}: <span className="text-[#00a2e8]">{selectedWeeklyAttendee.ten}</span>
+                          </h4>
+                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            Mã NV: {selectedWeeklyAttendee.ma} • Nhóm: {selectedWeeklyAttendee.danhSach} • {attendanceType === 'Báo cáo theo tuần' ? `Tuần ${attendanceWeekNumber}` : `Tháng ${attendanceMonthNumber}`} ({attendanceStartDate} - {attendanceEndDate})
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-                  const selectedGroupNameForFilter = attendanceGroup === 'All'
-                    ? 'All'
-                    : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
+                    {/* Body (Split columns) */}
+                    {(() => {
+                      const isWeekly = attendanceType === 'Báo cáo theo tuần';
+                      const daysOfWeekNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
-                  // Daily roster: real employees from DB
-                  const activeRealEmployees = employees.filter(emp => {
-                    if (selectedGroupNameForFilter === 'All') return true;
-                    const groups: string[] = emp.human_group || [];
-                    return groups.some((g: string) => g.toLowerCase() === selectedGroupNameForFilter.toLowerCase());
-                  });
+                      // Use real dailyLogs from API if available
+                      const realLogs = (selectedWeeklyAttendee.dailyLogs || []).map((log: any) => {
+                        const d = new Date(log.date);
+                        const dayName = daysOfWeekNames[d.getDay()];
+                        return {
+                          dayName,
+                          dateStr: log.date,
+                          checkIn: log.thoiGianVao || 'Trống',
+                          checkOut: log.thoiGianRa || 'Trống',
+                          totalHours: log.hours ? `${Math.round(log.hours * 100) / 100} h` : '0 h',
+                          entryEvent: log.entryEvent || null,
+                          exitEvent: log.exitEvent || null,
+                        };
+                      });
 
-                  const dailyRoster = (() => {
-                    // Always show all active real employees in the system,
-                    // enriched with checkin/checkout times from dailyReportData API
-                    return activeRealEmployees.map((emp: any) => {
-                      const match = dailyReportData.find((item: any) => item.employeeId === emp.id);
-                      const thoiGianVao = match ? (match.thoiGianVao || 'Trống') : 'Trống';
-                      const thoiGianRa = match ? (match.thoiGianRa || 'Trống') : 'Trống';
-                      const entryEvent = match ? (match.entryEvent || null) : null;
-                      const exitEvent = match ? (match.exitEvent || null) : null;
-                      return {
-                        id: emp.id,
-                        ma: emp.maGiayTo || '',
-                        ten: emp.hoTen || '',
-                        danhSach: (emp.human_group || []).join(', ') || 'Khách hàng / Khác',
-                        thoiGianVao,
-                        thoiGianRa,
-                        entryEvent,
-                        exitEvent,
-                        totalHours: calculateWorkHours(thoiGianVao, thoiGianRa),
-                      };
-                    });
-                  })();
+                      const logs = realLogs.length > 0
+                        ? realLogs
+                        : (isWeekly
+                          ? generateWeeklyLogs(selectedWeeklyAttendee.ma, attendanceStartDate)
+                          : generateMonthlyLogs(selectedWeeklyAttendee.ma, attendanceMonthNumber, attendanceYear));
+                      const activeLog = logs.find(log => log.dateStr === selectedDetailDayStr) || logs[0];
 
-                  // Range roster: from activeRealEmployees enriched by rangeReportData (weekly / monthly)
-                  const rangeRoster = activeRealEmployees.map((emp: any) => {
-                    const match = rangeReportData.find((item: any) => item.employeeId === emp.id);
-                    const th = match ? Math.round(match.totalHours * 100) / 100 : 0;
-                    return {
-                      id: emp.id,
-                      ma: emp.maGiayTo || '',
-                      ten: emp.hoTen || '',
-                      danhSach: (emp.human_group || []).join(', ') || 'Khách hàng / Khác',
-                      thoiGianVao: '',
-                      thoiGianRa: '',
-                      entryEvent: null,
-                      exitEvent: null,
-                      totalHours: `${th} h`,
-                      dailyLogs: match?.dailyLogs || [],
-                    };
-                  });
+                      return (
+                        <div className="flex-1 flex overflow-hidden min-h-[350px]">
+                          {/* Left Column: Days list */}
+                          <div className="flex-1 overflow-auto border-r border-[#21232d]/40">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                  <th className="py-3 px-4">Thứ / Ngày</th>
+                                  <th className="py-3 px-4">Làm lúc</th>
+                                  <th className="py-3 px-4">Đến lúc</th>
+                                  <th className="py-3 px-4 text-center">Tổng giờ ngày</th>
+                                  <th className="py-3 px-4 text-center">Trạng thái</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
+                                {logs.map((log) => {
+                                  const isSelected = activeLog.dateStr === log.dateStr;
+                                  const hasNoLog = log.checkIn === 'Trống';
 
-                  const activeEmployees = isDaily ? dailyRoster : rangeRoster;
-                  const selectedAttendee = activeEmployees.find(emp => emp.ma === selectedAttendanceEmpCode) || activeEmployees[0];
+                                  return (
+                                    <tr
+                                      key={log.dateStr}
+                                      onClick={() => setSelectedDetailDayStr(log.dateStr)}
+                                      className={`cursor-pointer transition-colors ${isSelected
+                                        ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                        : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                        }`}
+                                    >
+                                      <td className={`py-3 px-4 font-sans font-medium ${isSelected ? 'text-[#00a2e8]' : 'text-slate-100'}`}>
+                                        {log.dayName} <span className="text-[10px] text-slate-500 font-mono ml-1">({log.dateStr.split('-').reverse().slice(0, 2).join('/')})</span>
+                                      </td>
+                                      <td className={`py-3 px-4 ${hasNoLog ? 'text-slate-500' : 'text-slate-300'}`}>
+                                        {log.checkIn}
+                                      </td>
+                                      <td className={`py-3 px-4 ${hasNoLog ? 'text-slate-500' : 'text-slate-300'}`}>
+                                        {log.checkOut}
+                                      </td>
+                                      <td className={`py-3 px-4 text-center font-semibold ${hasNoLog ? 'text-slate-500' : 'text-emerald-400'}`}>
+                                        {log.totalHours}
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        {hasNoLog ? (
+                                          <span className="px-2 py-0.5 rounded text-[9px] font-sans font-medium bg-slate-500/10 text-slate-500 border border-slate-500/10">Nghỉ</span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded text-[9px] font-sans font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Có mặt</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
 
-                  return (
+                          {/* Right Column: Camera photos for selected day */}
+                          <div className="w-80 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
+                            {activeLog && activeLog.checkIn !== 'Trống' ? (
+                              <div className="p-4 space-y-4 text-left">
+                                <div className="pb-3 border-b border-[#2d2f3c]/60">
+                                  <h4 className="font-bold text-xs text-white uppercase tracking-wider">
+                                    Ảnh Camera - {activeLog.dayName}
+                                  </h4>
+                                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                    Ngày: {activeLog.dateStr.split('-').reverse().join('/')}
+                                  </p>
+                                </div>
+
+                                {/* Entry Photo */}
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào</span>
+                                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${activeLog.checkIn === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                      {activeLog.checkIn}
+                                    </span>
+                                  </div>
+                                  <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
+                                    {activeLog.entryEvent?.cropped_face_images?.[0] ? (
+                                      <>
+                                        <img
+                                          src={activeLog.entryEvent.cropped_face_images[0]}
+                                          alt="Check-in"
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                          <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                          <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                          <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                          <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                        </div>
+                                        <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                          Ảnh check-in
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
+                                        <CameraOff size={28} />
+                                        <span className="text-[10px] font-mono">Không có ảnh</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Exit Photo */}
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra</span>
+                                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${activeLog.checkOut === 'Trống' ? 'text-slate-500 bg-slate-500/10 border-slate-500/10' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+                                      {activeLog.checkOut}
+                                    </span>
+                                  </div>
+                                  <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center shadow-inner">
+                                    {activeLog.exitEvent?.cropped_face_images?.[0] ? (
+                                      <>
+                                        <img
+                                          src={activeLog.exitEvent.cropped_face_images[0]}
+                                          alt="Check-out"
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                          <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                          <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                          <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                          <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                        </div>
+                                        <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                          Ảnh check-out
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
+                                        <CameraOff size={28} />
+                                        <span className="text-[10px] font-mono">Không có ảnh</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-2">
+                                <Clock size={28} className="text-slate-600 animate-pulse" />
+                                <p className="text-xs">Không có dữ liệu camera</p>
+                                <p className="text-[10px] text-slate-600 max-w-[200px]">Nhân viên không có bản ghi ra vào trong ngày {activeLog ? activeLog.dayName : 'này'}.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  /* HIGH FIDELITY REPORT TABLE */
+                  <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col flex-1">
+                    <div className="p-4 bg-[#181921] border-b border-[#21232d] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center space-x-2">
+                        <span className="p-1.5 rounded-lg bg-[#00a2e8]/10 border border-[#00a2e8]/20 text-[#00a2e8]">
+                          <FileText size={15} />
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-200">Dữ liệu Báo cáo: {attendanceType}</h4>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            {attendanceType === 'Báo cáo theo ngày'
+                              ? `Ngày: ${attendanceStartDate}`
+                              : `Từ ${attendanceStartDate} đến ${attendanceEndDate}`
+                            } • Nhóm: {attendanceGroup === 'All' ? 'Tất cả' : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup)}
+                          </p>
+                        </div>
+                      </div>
+                      {(() => {
+                        const isDaily = attendanceType === 'Báo cáo theo ngày';
+                        const isRange = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+                        const selectedGroupNameCount = attendanceGroup === 'All'
+                          ? 'All'
+                          : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
+                        let activeCount = 0;
+                        if (isDaily) {
+                          activeCount = selectedGroupNameCount === 'All'
+                            ? employees.length
+                            : employees.filter(emp => {
+                              const groups: string[] = emp.human_group || [];
+                              return groups.some((g: string) => g.toLowerCase() === selectedGroupNameCount.toLowerCase());
+                            }).length;
+                        } else if (isRange) {
+                          activeCount = rangeReportData.length;
+                        }
+                        return (
+                          <div className="text-[11px] font-mono text-slate-400">
+                            Phát hiện: <span className="text-white font-bold font-mono">{activeCount}</span> nhân sự
+                          </div>
+                        );
+                      })()}
+                    </div>
+
                     <div className="flex-1 flex overflow-hidden min-h-[300px]">
                       {/* Left Table Section */}
                       <div className={`flex-1 overflow-auto ${showRightSidebar ? 'border-r border-[#21232d]/40' : ''}`}>
@@ -3122,30 +3441,30 @@ export const ReportPage = () => {
                         </div>
                       )}
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {!showAttendanceReportDemo && (
-            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0e12]/60 backdrop-blur-sm p-6 text-center">
-              <div className="bg-[#14151b] border border-[#2d2f3e] p-8 rounded-2xl shadow-2xl max-w-sm flex flex-col items-center">
-                <div className="p-3.5 bg-[#00a2e8]/10 rounded-full text-[#00a2e8] mb-4 animate-pulse">
-                  <Sparkles size={24} />
+              {!showAttendanceReportDemo && (
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0e12]/60 backdrop-blur-sm p-6 text-center">
+                  <div className="bg-[#14151b] border border-[#2d2f3e] p-8 rounded-2xl shadow-2xl max-w-sm flex flex-col items-center">
+                    <div className="p-3.5 bg-[#00a2e8]/10 rounded-full text-[#00a2e8] mb-4 animate-pulse">
+                      <Sparkles size={24} />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-100 mb-2">Tính năng đang được hoàn thiện</h3>
+                    <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">Giao diện Báo cáo chấm công đang trong quá trình phát triển và hoàn thiện dữ liệu thực tế.</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAttendanceReportDemo(true)}
+                      className="px-5 py-2.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-xl text-xs font-bold transition shadow-lg shadow-[#00a2e8]/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      Xem bản mẫu
+                    </button>
+                  </div>
                 </div>
-                <h3 className="text-sm font-bold text-slate-100 mb-2">Tính năng đang được hoàn thiện</h3>
-                <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">Giao diện Báo cáo chấm công đang trong quá trình phát triển và hoàn thiện dữ liệu thực tế.</p>
-                <button
-                  type="button"
-                  onClick={() => setShowAttendanceReportDemo(true)}
-                  className="px-5 py-2.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-xl text-xs font-bold transition shadow-lg shadow-[#00a2e8]/20 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  Xem bản mẫu
-                </button>
-              </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()
       ) : (
         /* Tab 3 Content: Báo cáo cuộc họp */
         <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6">
@@ -3291,10 +3610,10 @@ export const ReportPage = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        setAppliedStartDate(meetingStartDate);
-                        setAppliedEndDate(meetingEndDate);
-                        setAppliedStartTime(meetingStartTime);
-                        setAppliedEndTime(meetingEndTime);
+                        setAppliedMeetingStartDate(meetingStartDate);
+                        setAppliedMeetingEndDate(meetingEndDate);
+                        setAppliedMeetingStartTime(meetingStartTime);
+                        setAppliedMeetingEndTime(meetingEndTime);
                         setAppliedMeetingAreas([...selectedMeetingAreas]);
                       }}
                       className="w-full flex items-center justify-center space-x-1.5 px-2 h-[38px] bg-[#00a2e8] hover:bg-[#008cc9] text-white border border-[#00a2e8] rounded-lg text-[11px] font-bold uppercase transition-all duration-200 cursor-pointer shadow-md shadow-[#00a2e8]/10"
@@ -3318,8 +3637,8 @@ export const ReportPage = () => {
                         return schMeetingSavedData.filter((meet: any) => {
                           const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
                           const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
-                          const filterStart = getMeetingTimestamp(appliedStartDate, appliedStartTime);
-                          const filterEnd = getMeetingTimestamp(appliedEndDate, appliedEndTime);
+                          const filterStart = getMeetingTimestamp(appliedMeetingStartDate, appliedMeetingStartTime);
+                          const filterEnd = getMeetingTimestamp(appliedMeetingEndDate, appliedMeetingEndTime);
 
                           const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
                           const isInArea = appliedMeetingAreas.includes(meet.area);
@@ -3337,8 +3656,8 @@ export const ReportPage = () => {
                     const filteredMeetings = schMeetingSavedData.filter((meet: any) => {
                       const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
                       const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
-                      const filterStart = getMeetingTimestamp(appliedStartDate, appliedStartTime);
-                      const filterEnd = getMeetingTimestamp(appliedEndDate, appliedEndTime);
+                      const filterStart = getMeetingTimestamp(appliedMeetingStartDate, appliedMeetingStartTime);
+                      const filterEnd = getMeetingTimestamp(appliedMeetingEndDate, appliedMeetingEndTime);
 
                       const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
                       const isInArea = appliedMeetingAreas.includes(meet.area);
@@ -4538,6 +4857,79 @@ export const ReportPage = () => {
                   <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>{row.danhSach || ''}</td>
                   <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.thoiGian || ''}</td>
                   <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{`${row.accuracy || 95}%`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Hidden Attendance Report PDF Container */}
+      <div
+        id="attendance-report-pdf-template"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          top: '-9999px',
+          width: '1024px',
+          backgroundColor: '#ffffff',
+          color: '#000000',
+        }}
+      >
+        <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+          <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
+            BÁO CÁO ĐIỂM DANH - {attendanceType.toUpperCase()}
+          </h2>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
+            <tbody>
+              <tr>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Nhóm:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>
+                  {attendanceGroup === 'All' ? 'Tất cả' : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup)}
+                </td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Số lượng nhân sự:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{pdfAttendanceRoster.length}</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Từ ngày:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{attendanceStartDate}</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đến ngày:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{attendanceEndDate}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '8%' }}>STT</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '18%' }}>Mã NV</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '25%' }}>Họ và Tên</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Nhóm / nhóm nhân viên</th>
+                {attendanceType === 'Báo cáo theo ngày' && <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '12%' }}>Giờ Vào</th>}
+                {attendanceType === 'Báo cáo theo ngày' && <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '12%' }}>Giờ Ra</th>}
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Tổng giờ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pdfAttendanceRoster.map((row, idx) => (
+                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.ma || ''}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.ten || ''}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>{row.danhSach || ''}</td>
+                  {attendanceType === 'Báo cáo theo ngày' && (
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace', color: row.thoiGianVao === 'Trống' ? '#9CA3AF' : '#059669' }}>
+                      {row.thoiGianVao}
+                    </td>
+                  )}
+                  {attendanceType === 'Báo cáo theo ngày' && (
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace', color: row.thoiGianRa === 'Trống' ? '#9CA3AF' : '#059669' }}>
+                      {row.thoiGianRa}
+                    </td>
+                  )}
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{row.totalHours || '0 h'}</td>
                 </tr>
               ))}
             </tbody>
