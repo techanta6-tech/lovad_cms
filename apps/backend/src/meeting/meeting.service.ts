@@ -344,6 +344,8 @@ export class MeetingService {
     const checkinEvents = checkinEventsRaw.map(mapEvent);
     const checkoutEvents = checkoutEventsRaw.map(mapEvent);
 
+    /* ==========================================
+    // THUẬT TOÁN CŨ (ĐÃ ĐÓNG BĂNG)
     const attendanceMap = new Map<string, {
       employeeId: string;
       thoiGianVao: string | null;
@@ -411,6 +413,99 @@ export class MeetingService {
     }
 
     const attendance = Array.from(attendanceMap.values());
+    ========================================== */
+
+    // THUẬT TOÁN TINH CHỈNH MỚI
+    const getActualDateTime = (date: Date, timeStr: string): Date => {
+      const [h, m] = timeStr.split(':').map(Number);
+      const res = new Date(date);
+      res.setHours(h, m, 0, 0);
+      return res;
+    };
+
+    const actualStart = getActualDateTime(meeting.date_organize, meeting.time_start);
+    const actualEnd = getActualDateTime(meeting.date_organize, meeting.time_end);
+    const tStartMs = actualStart.getTime();
+    const tEndMs = actualEnd.getTime();
+
+    const extractLocalTimeStr = (dateVal: Date | string): string | null => {
+      const formatted = this.formatDateToLocalString(dateVal);
+      if (!formatted) return null;
+      return formatted.split('-')[1] || null;
+    };
+
+    const allEmployeeIds = new Set<string>();
+    for (const e of checkinEvents) allEmployeeIds.add(e.object_id);
+    for (const e of checkoutEvents) allEmployeeIds.add(e.object_id);
+
+    const attendance: any[] = [];
+
+    for (const empId of allEmployeeIds) {
+      const empCheckin = checkinEvents.filter(e => e.object_id === empId).map(e => ({ ...e, type: 'in' as const }));
+      const empCheckout = checkoutEvents.filter(e => e.object_id === empId).map(e => ({ ...e, type: 'out' as const }));
+
+      const allEmpEvents = [...empCheckin, ...empCheckout].sort(
+        (a, b) => new Date(a.time_created).getTime() - new Date(b.time_created).getTime()
+      );
+
+      // 1. Xác định giờ vào (entryEvent)
+      const nearestBeforeStart = allEmpEvents.filter(e => new Date(e.time_created).getTime() < tStartMs).pop();
+      let entryEvent: any = null;
+
+      if (nearestBeforeStart) {
+        if (nearestBeforeStart.type === 'out') {
+          const firstInDuringMeeting = allEmpEvents.find(
+            e => new Date(e.time_created).getTime() >= tStartMs && 
+                 new Date(e.time_created).getTime() <= tEndMs && 
+                 e.type === 'in'
+          );
+          entryEvent = firstInDuringMeeting || null;
+        } else {
+          entryEvent = nearestBeforeStart;
+        }
+      } else {
+        const firstInDuringMeeting = allEmpEvents.find(
+          e => new Date(e.time_created).getTime() >= tStartMs && 
+               new Date(e.time_created).getTime() <= tEndMs && 
+               e.type === 'in'
+        );
+        entryEvent = firstInDuringMeeting || null;
+      }
+
+      // 2. Xác định giờ ra (exitEvent)
+      const nearestBeforeEnd = allEmpEvents.filter(
+        e => new Date(e.time_created).getTime() >= tStartMs && 
+             new Date(e.time_created).getTime() <= tEndMs
+      ).pop();
+      let exitEvent: any = null;
+
+      if (nearestBeforeEnd) {
+        if (nearestBeforeEnd.type === 'out') {
+          exitEvent = nearestBeforeEnd;
+        } else {
+          const firstOutAfterEnd = allEmpEvents.find(
+            e => new Date(e.time_created).getTime() > tEndMs && 
+                 e.type === 'out'
+          );
+          exitEvent = firstOutAfterEnd || null;
+        }
+      } else {
+        const firstOutAfterEnd = allEmpEvents.find(
+          e => new Date(e.time_created).getTime() > tEndMs && 
+               e.type === 'out'
+        );
+        exitEvent = firstOutAfterEnd || null;
+      }
+
+      attendance.push({
+        employeeId: empId,
+        thoiGianVao: entryEvent && entryEvent.time_created ? extractLocalTimeStr(entryEvent.time_created) : null,
+        thoiGianRa: exitEvent && exitEvent.time_created ? extractLocalTimeStr(exitEvent.time_created) : null,
+        entryEvent,
+        exitEvent,
+      });
+    }
+
 
     return {
       attendance,

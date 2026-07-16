@@ -377,7 +377,7 @@ export const ReportPage = () => {
       const matchesSearch = !meetingSearchQuery
         ? true
         : emp.hoTen.toLowerCase().includes(meetingSearchQuery.toLowerCase()) ||
-          emp.maGiayTo.includes(meetingSearchQuery);
+        emp.maGiayTo.includes(meetingSearchQuery);
       return matchesGroup && matchesSearch;
     });
 
@@ -599,19 +599,23 @@ export const ReportPage = () => {
     setSelectedMeetingReport(null);
   }, [location.key]);
 
-  const [hasInitializedAreas, setHasInitializedAreas] = useState(false);
+  const [prevAreasKey, setPrevAreasKey] = useState('');
   useEffect(() => {
-    if (areasData && areasData.length > 0 && !hasInitializedAreas) {
+    if (areasData && areasData.length > 0) {
       const areaNames = areasData.map(a => a.name).filter(name => name !== 'Checkin Area' && name !== 'Checkout Area');
-      setSelectedMeetingAreas(areaNames);
-      setAppliedMeetingAreas(areaNames);
-      setHasInitializedAreas(true);
+      const currentAreasKey = areasData.map(a => a.id).join(',');
+
+      if (currentAreasKey !== prevAreasKey) {
+        setSelectedMeetingAreas(areaNames);
+        setAppliedMeetingAreas(areaNames);
+        setPrevAreasKey(currentAreasKey);
+      }
     }
-  }, [areasData, hasInitializedAreas]);
+  }, [areasData, prevAreasKey]);
 
   // Attendance Report states
-  const [attendanceType, setAttendanceType] = useState<string>('Overtime Hours');
-  const [attendanceStartDate, setAttendanceStartDate] = useState<string>('2026-07-01');
+  const [attendanceType, setAttendanceType] = useState<string>('Báo cáo theo ngày');
+  const [attendanceStartDate, setAttendanceStartDate] = useState<string>('2026-07-09');
   const [attendanceEndDate, setAttendanceEndDate] = useState<string>('2026-07-09');
   const [attendanceGroup, setAttendanceGroup] = useState<string>('All');
   const [isAttTypeOpen, setIsAttTypeOpen] = useState<boolean>(false);
@@ -619,6 +623,327 @@ export const ReportPage = () => {
   const [isAttExportOpen, setIsAttExportOpen] = useState<boolean>(false);
   const [attendanceExportFormat, setAttendanceExportFormat] = useState<'CSV' | 'XLSX'>('CSV');
   const [exportedFileName, setExportedFileName] = useState<string>('ThongKeSuKien_DVMS.xlsx');
+  const [selectedAttendanceEmpCode, setSelectedAttendanceEmpCode] = useState<string | null>(null);
+
+  // Helper functions for week date conversion
+  const getMondayOfWeek = useCallback((year: number, weekNum: number): string => {
+    const jan4 = new Date(year, 0, 4);
+    const jan4Day = jan4.getDay() || 7;
+    const mondayOfWeek1 = new Date(jan4);
+    mondayOfWeek1.setDate(jan4.getDate() - jan4Day + 1);
+    const target = new Date(mondayOfWeek1);
+    target.setDate(target.getDate() + (weekNum - 1) * 7);
+    const yyyy = target.getFullYear();
+    const mm = String(target.getMonth() + 1).padStart(2, '0');
+    const dd = String(target.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const getSundayOfWeek = useCallback((mondayStr: string): string => {
+    const d = new Date(mondayStr);
+    d.setDate(d.getDate() + 6);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const [attendanceWeekNumber, setAttendanceWeekNumber] = useState<number>(() => {
+    const d = new Date('2026-07-09');
+    const dayNum = d.getDay() || 7;
+    d.setDate(d.getDate() + 4 - dayNum);
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  });
+  const [attendanceYear, setAttendanceYear] = useState<number>(2026);
+  const [attendanceMonthNumber, setAttendanceMonthNumber] = useState<number>(7); // defaults to July (Tháng 7)
+
+  // Attendance Area filters
+  const [selectedAttendanceAreas, setSelectedAttendanceAreas] = useState<string[]>([]);
+  const [isAttendanceAreaDropdownOpen, setIsAttendanceAreaDropdownOpen] = useState<boolean>(false);
+  const [prevAttendanceAreasKey, setPrevAttendanceAreasKey] = useState('');
+
+  // Sync selectedAttendanceAreas
+  useEffect(() => {
+    if (areasData && areasData.length > 0) {
+      const allAreaNames = areasData.map(a => a.name);
+      const currentAreasKey = areasData.map(a => a.id).join(',');
+
+      if (currentAreasKey !== prevAttendanceAreasKey) {
+        setSelectedAttendanceAreas(allAreaNames);
+        setPrevAttendanceAreasKey(currentAreasKey);
+      }
+    }
+  }, [areasData, prevAttendanceAreasKey]);
+
+  // Dynamic Work Hours calculation helper
+  const calculateWorkHours = useCallback((checkInStr: string, checkOutStr: string): string => {
+    if (checkInStr === 'Trống' || checkOutStr === 'Trống') return '0 h';
+
+    const [inH, inM, inS] = checkInStr.split(':').map(Number);
+    const [outH, outM, outS] = checkOutStr.split(':').map(Number);
+
+    const inSeconds = inH * 3600 + inM * 60 + (inS || 0);
+    const outSeconds = outH * 3600 + outM * 60 + (outS || 0);
+
+    if (outSeconds <= inSeconds) return '0 h';
+
+    let diffSeconds = outSeconds - inSeconds;
+
+    // Subtract 1h30m (5400 seconds) for lunch break
+    diffSeconds = Math.max(0, diffSeconds - 5400);
+
+    let hours = diffSeconds / 3600;
+
+    if (hours > 8) {
+      hours = 8;
+    }
+
+    return `${Math.round(hours * 100) / 100} h`;
+  }, []);
+
+  // Sync attendance dates when week/month/year changes
+  useEffect(() => {
+    if (attendanceType === 'Báo cáo theo tuần') {
+      const monday = getMondayOfWeek(attendanceYear, attendanceWeekNumber);
+      const sunday = getSundayOfWeek(monday);
+      setAttendanceStartDate(monday);
+      setAttendanceEndDate(sunday);
+    } else if (attendanceType === 'Báo cáo theo tháng') {
+      const mm = String(attendanceMonthNumber).padStart(2, '0');
+      const start = `${attendanceYear}-${mm}-01`;
+      const daysInMonth = new Date(attendanceYear, attendanceMonthNumber, 0).getDate();
+      const end = `${attendanceYear}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+      setAttendanceStartDate(start);
+      setAttendanceEndDate(end);
+    }
+  }, [attendanceWeekNumber, attendanceYear, attendanceMonthNumber, attendanceType, getMondayOfWeek, getSundayOfWeek]);
+
+  // Weekly/Monthly Attendance Sub-view states
+  const [selectedWeeklyAttendee, setSelectedWeeklyAttendee] = useState<any | null>(null);
+  const [selectedDetailDayStr, setSelectedDetailDayStr] = useState<string>('');
+
+  // Reset selectedWeeklyAttendee when switching report type
+  useEffect(() => {
+    setSelectedWeeklyAttendee(null);
+  }, [attendanceType]);
+
+  const generateWeeklyLogs = useCallback((empCode: string, mondayStr: string) => {
+    const daysOfWeek = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
+    const baseDate = new Date(mondayStr);
+    const isPhuc = empCode === "080203011585";
+    const isLoi = empCode === "010203045567";
+
+    return daysOfWeek.map((dayName, index) => {
+      const d = new Date(baseDate);
+      d.setDate(baseDate.getDate() + index);
+      const dateStr = d.toISOString().split('T')[0];
+
+      const isWeekend = index === 5 || index === 6;
+      if (isWeekend) {
+        return {
+          dayName,
+          dateStr,
+          checkIn: 'Trống',
+          checkOut: 'Trống',
+          totalHours: '0 h'
+        };
+      }
+
+      let checkIn = '07:55:04';
+      let checkOut = '17:30:12';
+
+      if (isPhuc) {
+        if (index === 0) {
+          checkIn = '08:02:11';
+          checkOut = '17:35:45';
+        } else if (index === 2) {
+          checkIn = '08:15:32';
+          checkOut = '17:30:00';
+        } else if (index === 3) {
+          checkIn = '08:00:15';
+          checkOut = '19:30:15';
+        } else {
+          checkIn = '07:58:12';
+          checkOut = '17:31:00';
+        }
+      } else if (isLoi) {
+        if (index === 1) {
+          checkIn = '07:52:10';
+          checkOut = '18:45:00';
+        } else {
+          checkIn = '07:55:04';
+          checkOut = '17:30:12';
+        }
+      }
+
+      return {
+        dayName,
+        dateStr,
+        checkIn,
+        checkOut,
+        totalHours: calculateWorkHours(checkIn, checkOut)
+      };
+    });
+  }, [calculateWorkHours]);
+
+  const generateMonthlyLogs = useCallback((empCode: string, monthNum: number, yearNum: number) => {
+    const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+    const daysOfWeekNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+    const isPhuc = empCode === "080203011585";
+    const isLoi = empCode === "010203045567";
+
+    const logs = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(yearNum, monthNum - 1, day);
+      const dayOfWeekIndex = d.getDay();
+      const dayName = daysOfWeekNames[dayOfWeekIndex];
+      const mm = String(monthNum).padStart(2, '0');
+      const dd = String(day).padStart(2, '0');
+      const dateStr = `${yearNum}-${mm}-${dd}`;
+
+      const isWeekend = dayOfWeekIndex === 0 || dayOfWeekIndex === 6;
+      if (isWeekend) {
+        logs.push({
+          dayName,
+          dateStr,
+          checkIn: 'Trống',
+          checkOut: 'Trống',
+          totalHours: '0 h'
+        });
+        continue;
+      }
+
+      let checkIn = '07:55:04';
+      let checkOut = '17:30:12';
+
+      if (isPhuc) {
+        if (day % 7 === 1) {
+          checkIn = '08:02:11';
+          checkOut = '17:35:45';
+        } else if (day % 7 === 3) {
+          checkIn = '08:15:32';
+          checkOut = '17:30:00';
+        } else if (day % 7 === 4) {
+          checkIn = '08:00:15';
+          checkOut = '19:30:15';
+        } else {
+          checkIn = '07:58:12';
+          checkOut = '17:31:00';
+        }
+      } else if (isLoi) {
+        if (day % 7 === 2) {
+          checkIn = '07:52:10';
+          checkOut = '18:45:00';
+        } else {
+          checkIn = '07:55:04';
+          checkOut = '17:30:12';
+        }
+      }
+
+      logs.push({
+        dayName,
+        dateStr,
+        checkIn,
+        checkOut,
+        totalHours: calculateWorkHours(checkIn, checkOut)
+      });
+    }
+    return logs;
+  }, [calculateWorkHours]);
+
+  // Helper and handler for meeting report (moved to main scope)
+  const mapDepToLogGroup = (dep: string): string => {
+    if (dep === 'nhóm nhân viên 1' || dep === 'nhóm nhân viên 1') return 'nhóm nhân viên A';
+    if (dep === 'nhóm nhân viên 2' || dep === 'nhóm nhân viên 2') return 'nhóm nhân viên B';
+    if (dep === 'Nhóm nhân viên C') return 'nhóm nhân viên C';
+    if (dep === 'Nhóm nhân viên D' || dep === 'Phòng nhân sự') return 'nhóm nhân viên D';
+    return dep;
+  };
+
+  const handleSelectMeeting = useCallback(async (meet: any) => {
+    setSelectedMeetingReport(meet);
+    setMeetingDate(meet.date);
+    setMeetingStartTime(meet.startTime);
+    setMeetingEndTime(meet.endTime);
+    const mappedGroups = (meet.departments || []).map(mapDepToLogGroup);
+    setMeetingGroups(mappedGroups);
+    setIsMeetingSearched(true);
+    setMeetingCurrentPage(1);
+
+    setIsLoadingReport(true);
+    try {
+      const baseUrl = getBackendUrl();
+      const res = await fetch(`${baseUrl}/meeting/${meet.id}/attendance-report`);
+      if (res.ok) {
+        const data = await res.json();
+        setMeetingReportData(data);
+        console.log('--- LCMS ATTENDANCE REPORT QUERY ---');
+        console.log('SQL Query:\n', data.query);
+        console.log('Check-in Query Parameters:\n', data.paramsCheckin);
+        console.log('Check-out Query Parameters:\n', data.paramsCheckout);
+        console.log('Attendance Aggregated Result:\n', data.attendance);
+        console.log('------------------------------------');
+      }
+    } catch (err) {
+      console.error('Failed to load meeting attendance report:', err);
+    } finally {
+      setIsLoadingReport(false);
+    }
+  }, []);
+
+  // Tự động truy vấn cuộc họp đầu tiên khi vào tab 'meeting' hoặc khi dữ liệu cuộc họp load xong
+  useEffect(() => {
+    if (activeTab === 'meeting' && !selectedMeetingReport && meetings && meetings.length > 0 && appliedMeetingAreas.length > 0) {
+      const schMeetingSavedData = (meetings as any[]).map(m => {
+        const area = areasData.find(a => a.id === m.location_id);
+        return {
+          id: m.id,
+          title: m.title,
+          area: area?.name || m.location_id,
+          date: m.meeting_date ? m.meeting_date.split('T')[0] : '',
+          startTime: m.start_time || '',
+          endTime: m.end_time || '',
+          departments: m.departments || [],
+        };
+      });
+
+      const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
+        return new Date(`${dateStr}T${timeStr || '00:00'}`).getTime();
+      };
+
+      const filteredMeetings = schMeetingSavedData.filter((meet: any) => {
+        const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
+        const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
+        const filterStart = getMeetingTimestamp(appliedStartDate || meetingStartDate, appliedStartTime || meetingStartTime);
+        const filterEnd = getMeetingTimestamp(appliedEndDate || meetingEndDate, appliedEndTime || meetingEndTime);
+
+        const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
+        const isInArea = appliedMeetingAreas.includes(meet.area);
+        return isInTimeRange && isInArea;
+      });
+
+      const targetMeeting = filteredMeetings.length > 0 ? filteredMeetings[0] : schMeetingSavedData[0];
+      if (targetMeeting) {
+        handleSelectMeeting(targetMeeting);
+      }
+    }
+  }, [
+    activeTab,
+    meetings,
+    selectedMeetingReport,
+    areasData,
+    appliedStartDate,
+    appliedEndDate,
+    appliedStartTime,
+    appliedEndTime,
+    appliedMeetingAreas,
+    handleSelectMeeting,
+    meetingStartDate,
+    meetingEndDate,
+    meetingStartTime,
+    meetingEndTime
+  ]);
 
   // Trigger Excel export simulation
   const handleExportExcel = () => {
@@ -764,7 +1089,7 @@ export const ReportPage = () => {
         if (!infoSheet[cellRef]) {
           const isMetadataCell = (R >= 1 && R <= 5 && C <= 1) || (R >= 4 && R <= 5 && C >= 2 && C <= 7);
           const isTableDetailCell = (R >= 7 && C <= 7);
-          
+
           if (isMetadataCell || isTableDetailCell) {
             infoSheet[cellRef] = { t: 's', v: '' };
           } else {
@@ -784,7 +1109,7 @@ export const ReportPage = () => {
           // Meeting Info (Header table)
           const isLabel = C === 0 || (C === 2 && R >= 4);
           const isValue = C === 1 || (C >= 3 && R >= 4);
-          
+
           if (isLabel || isValue) {
             cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
             cell.s.alignment = { horizontal: 'center', vertical: 'center' };
@@ -1086,7 +1411,7 @@ export const ReportPage = () => {
     infoSheet['!rows'] = rowHeights;
 
     XLSX.utils.book_append_sheet(wb, infoSheet, 'DanhSachSuKien');
-    
+
     // Write out buffer and download
     const buf = XLSX.write(wb, { type: 'binary', bookType: 'xlsx' });
     const s2ab = (s: string) => {
@@ -1158,10 +1483,13 @@ export const ReportPage = () => {
   const handleExportAttendance = (format: 'CSV' | 'XLSX') => {
     let typeSlug = 'BaoCao';
     switch (attendanceType) {
-      case 'Daily Summary':
+      case 'Báo cáo theo ngày':
         typeSlug = 'BaoCao_TongHopHangNgay';
         break;
-      case 'Monthly Summary':
+      case 'Báo cáo theo tuần':
+        typeSlug = 'BaoCao_TongHopHangTuan';
+        break;
+      case 'Báo cáo theo tháng':
         typeSlug = 'BaoCao_TongHopHangThang';
         break;
       case 'Late Arrivals & Early Leves':
@@ -1238,8 +1566,8 @@ export const ReportPage = () => {
                 // Make sure filter modal is not open if we switch
               }}
               className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center space-x-2 transition-all duration-200 ${activeTab === 'list'
-                  ? 'bg-[#0078d7] text-white shadow-lg shadow-[#0078d7]/20'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#0078d7] text-white shadow-lg shadow-[#0078d7]/20'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <List size={14} />
@@ -1251,8 +1579,8 @@ export const ReportPage = () => {
               id="tab-btn-attendance"
               onClick={() => setActiveTab('attendance')}
               className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center space-x-2 transition-all duration-200 ${activeTab === 'attendance'
-                  ? 'bg-[#0078d7] text-white shadow-lg shadow-[#0078d7]/20'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#0078d7] text-white shadow-lg shadow-[#0078d7]/20'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <Calendar size={14} />
@@ -1264,8 +1592,8 @@ export const ReportPage = () => {
               id="tab-btn-meeting"
               onClick={() => setActiveTab('meeting')}
               className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center space-x-2 transition-all duration-200 ${activeTab === 'meeting'
-                  ? 'bg-[#0078d7] text-white shadow-lg shadow-[#0078d7]/20'
-                  : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-[#0078d7] text-white shadow-lg shadow-[#0078d7]/20'
+                : 'text-slate-400 hover:text-slate-200'
                 }`}
             >
               <Clock size={14} />
@@ -1390,10 +1718,10 @@ export const ReportPage = () => {
                             setSelectedThumbIndex(0); // Reset thumbnail zoom index
                           }}
                           className={`cursor-pointer transition duration-150 ${isSelected
-                              ? 'bg-[#005a9e] text-white hover:bg-[#0062ac]'
-                              : isTranPhuocLoi
-                                ? 'bg-amber-950/10 text-amber-200 hover:bg-[#1f202b]'
-                                : 'hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                            ? 'bg-[#005a9e] text-white hover:bg-[#0062ac]'
+                            : isTranPhuocLoi
+                              ? 'bg-amber-950/10 text-amber-200 hover:bg-[#1f202b]'
+                              : 'hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
                             }`}
                         >
                           <td className="py-2 px-3 border-r border-[#21232d] text-center font-semibold text-slate-400">
@@ -1465,8 +1793,8 @@ export const ReportPage = () => {
                               setIsPerPageOpen(false);
                             }}
                             className={`w-full px-5 py-1.5 text-xs text-left transition whitespace-nowrap ${opt === itemsPerPage
-                                ? 'bg-[#00a2e8]/15 text-[#00a2e8] font-semibold'
-                                : 'text-slate-300 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8]'
+                              ? 'bg-[#00a2e8]/15 text-[#00a2e8] font-semibold'
+                              : 'text-slate-300 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8]'
                               }`}
                           >
                             {opt} / trang
@@ -1644,227 +1972,419 @@ export const ReportPage = () => {
               /* Main Simulated Camera Viewport Container */
               <div className="p-4 space-y-4">
 
-                      {/* Simulated Camera Window */}
-                      <div className="relative aspect-[4/3] bg-black rounded-lg border border-[#2d2f3e] overflow-hidden group shadow-lg">
+                {/* Simulated Camera Window */}
+                <div className="relative aspect-[4/3] bg-black rounded-lg border border-[#2d2f3e] overflow-hidden group shadow-lg">
 
-                        {/* Selected Person Image */}
-                        <img
-                          src={
-                            selectedThumbIndex === 1
-                              ? resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"
-                              : selectedThumbIndex === 0
-                                ? resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
-                                : (currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
-                          }
-                          alt="Face checkin capture"
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-contain opacity-90 transition duration-300"
-                        />
+                  {/* Selected Person Image */}
+                  <img
+                    src={
+                      selectedThumbIndex === 1
+                        ? resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"
+                        : selectedThumbIndex === 0
+                          ? resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
+                          : (currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")
+                    }
+                    alt="Face checkin capture"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-contain opacity-90 transition duration-300"
+                  />
 
-                        {/* Flash effect animation */}
-                        <AnimatePresence>
-                          {flashActive && (
-                            <motion.div
-                              initial={{ opacity: 1 }}
-                              animate={{ opacity: 0 }}
-                              className="absolute inset-0 bg-white z-40 pointer-events-none"
-                            />
-                          )}
-                        </AnimatePresence>
+                  {/* Flash effect animation */}
+                  <AnimatePresence>
+                    {flashActive && (
+                      <motion.div
+                        initial={{ opacity: 1 }}
+                        animate={{ opacity: 0 }}
+                        className="absolute inset-0 bg-white z-40 pointer-events-none"
+                      />
+                    )}
+                  </AnimatePresence>
 
-                        {/* 2. Technical OSD details overlaid on CCTV (Only display image quality) */}
-                        <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm border border-slate-700/40 px-2.5 py-1 rounded text-[10px] font-mono text-emerald-400 font-bold z-20">
-                          CHẤT LƯỢNG: <span className="text-white">1080P</span>
-                        </div>
-
-                        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-[9px] font-mono text-slate-300 z-20 border border-slate-700/40">
-                          {currentSelectedEvent.thoiGian}
-                        </div>
-                      </div>
-
-                      {/* 3. Thumbnails Strip Below Camera View */}
-                      <div className="grid grid-cols-4 gap-2">
-                        {/* Selected thumbnail 1 */}
-                        <button
-                          onClick={() => setSelectedThumbIndex(0)}
-                          className={`relative aspect-square rounded border overflow-hidden transition ${selectedThumbIndex === 0 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
-                            }`}
-                        >
-                          {(currentSelectedEvent as any).face_image_path || (currentSelectedEvent as any).faceImgBase64 || currentSelectedEvent.avatarSeed ? (
-                            <img
-                              src={resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")}
-                              alt="Crop face close-up"
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-[#1c1d24]" />
-                          )}
-                        </button>
-
-                        {/* Thumbnail 2: Alternative scene layout */}
-                        <button
-                          onClick={() => setSelectedThumbIndex(1)}
-                          className={`relative aspect-square rounded border overflow-hidden transition ${selectedThumbIndex === 1 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
-                            }`}
-                        >
-                          <img
-                            src={resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"}
-                            alt="Wide background snapshot"
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover"
-                          />
-                        </button>
-
-                        {/* Thumbnail 3: Zoomed camera frame */}
-                        <button
-                          onClick={() => setSelectedThumbIndex(2)}
-                          className={`relative aspect-square rounded border overflow-hidden transition ${selectedThumbIndex === 2 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
-                            }`}
-                        >
-                          {(currentSelectedEvent as any).faceImgBase64 || (currentSelectedEvent as any).face_image_path || currentSelectedEvent.avatarSeed ? (
-                            <img
-                              src={(currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")}
-                              alt="Cropped profile view"
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover scale-150 origin-center"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-[#1c1d24]" />
-                          )}
-                        </button>
-
-                        {/* Thumbnail 4: Tải ảnh & video đính kèm */}
-                        <button
-                          onClick={() => {
-                            alert("Đang chuẩn bị tải xuống toàn bộ tập tin hình ảnh và video đính kèm chất lượng cao...");
-                          }}
-                          className="aspect-square rounded border border-[#2d2f3e] bg-[#1c1d24] hover:bg-[#252731] hover:border-[#00a2e8] flex flex-col items-center justify-center space-y-1 transition group"
-                          title="Tải các ảnh & video đính kèm"
-                        >
-                          <Download size={18} className="text-slate-400 group-hover:text-[#00a2e8] transition" />
-                          <span className="text-[9px] text-slate-400 group-hover:text-slate-200 transition text-center leading-tight">
-                            Tải ảnh/video
-                          </span>
-                        </button>
-                      </div>
-
-                      {/* Dropdown Camera Select Block (Removed) */}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : activeTab === 'attendance' ? (
-            /* Tab 2 Content: Báo cáo chấm công (Report Builder) */
-            <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6 relative min-h-[400px]">
-              <div className={`flex flex-col space-y-6 flex-1 transition-all duration-300 ${!showAttendanceReportDemo ? 'blur-sm pointer-events-none select-none' : ''}`}>
-
-                {/* REPORT BUILDER CONTROLS PANEL */}
-                <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-6 shadow-2xl relative">
-                  <div className="flex items-center justify-between mb-5 border-b border-[#21232d] pb-4">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-100 tracking-tight">Report Builder</h3>
-                    </div>
+                  {/* 2. Technical OSD details overlaid on CCTV (Only display image quality) */}
+                  <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm border border-slate-700/40 px-2.5 py-1 rounded text-[10px] font-mono text-emerald-400 font-bold z-20">
+                    CHẤT LƯỢNG: <span className="text-white">1080P</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
-                    {/* Type Select */}
-                    <div className="md:col-span-3 space-y-2 text-left relative">
-                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Type</label>
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAttTypeOpen(!isAttTypeOpen);
-                            setIsAttGroupOpen(false);
-                            setIsAttExportOpen(false);
-                          }}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
-                        >
-                          <span className="font-medium text-slate-200">{attendanceType}</span>
-                          <ChevronDown size={14} className="text-slate-400" />
-                        </button>
-                        {isAttTypeOpen && (
-                          <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsAttTypeOpen(false)} />
-                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
-                              {[
-                                'Daily Summary',
-                                'Monthly Summary',
-                                'Late Arrivals & Early Leves',
-                                'Absence & Leave Summary',
-                                'Overtime Hours'
-                              ].map((typeOption) => (
+                  <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-[9px] font-mono text-slate-300 z-20 border border-slate-700/40">
+                    {currentSelectedEvent.thoiGian}
+                  </div>
+                </div>
+
+                {/* 3. Thumbnails Strip Below Camera View */}
+                <div className="grid grid-cols-4 gap-2">
+                  {/* Selected thumbnail 1 */}
+                  <button
+                    onClick={() => setSelectedThumbIndex(0)}
+                    className={`relative aspect-square rounded border overflow-hidden transition ${selectedThumbIndex === 0 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
+                      }`}
+                  >
+                    {(currentSelectedEvent as any).face_image_path || (currentSelectedEvent as any).faceImgBase64 || currentSelectedEvent.avatarSeed ? (
+                      <img
+                        src={resolveImageUrl((currentSelectedEvent as any).face_image_path) || (currentSelectedEvent as any).faceImgBase64 || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")}
+                        alt="Crop face close-up"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-[#1c1d24]" />
+                    )}
+                  </button>
+
+                  {/* Thumbnail 2: Alternative scene layout */}
+                  <button
+                    onClick={() => setSelectedThumbIndex(1)}
+                    className={`relative aspect-square rounded border overflow-hidden transition ${selectedThumbIndex === 1 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
+                      }`}
+                  >
+                    <img
+                      src={resolveImageUrl((currentSelectedEvent as any).full_image_path) || "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=150&h=150"}
+                      alt="Wide background snapshot"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+
+                  {/* Thumbnail 3: Zoomed camera frame */}
+                  <button
+                    onClick={() => setSelectedThumbIndex(2)}
+                    className={`relative aspect-square rounded border overflow-hidden transition ${selectedThumbIndex === 2 ? 'border-[#00a2e8] ring-1 ring-[#00a2e8]' : 'border-[#2d2f3e] hover:border-slate-500'
+                      }`}
+                  >
+                    {(currentSelectedEvent as any).faceImgBase64 || (currentSelectedEvent as any).face_image_path || currentSelectedEvent.avatarSeed ? (
+                      <img
+                        src={(currentSelectedEvent as any).faceImgBase64 || resolveImageUrl((currentSelectedEvent as any).face_image_path) || getAvatarUrl(currentSelectedEvent.avatarSeed, currentSelectedEvent.ma === "010203045567")}
+                        alt="Cropped profile view"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover scale-150 origin-center"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-[#1c1d24]" />
+                    )}
+                  </button>
+
+                  {/* Thumbnail 4: Tải ảnh & video đính kèm */}
+                  <button
+                    onClick={() => {
+                      alert("Đang chuẩn bị tải xuống toàn bộ tập tin hình ảnh và video đính kèm chất lượng cao...");
+                    }}
+                    className="aspect-square rounded border border-[#2d2f3e] bg-[#1c1d24] hover:bg-[#252731] hover:border-[#00a2e8] flex flex-col items-center justify-center space-y-1 transition group"
+                    title="Tải các ảnh & video đính kèm"
+                  >
+                    <Download size={18} className="text-slate-400 group-hover:text-[#00a2e8] transition" />
+                    <span className="text-[9px] text-slate-400 group-hover:text-slate-200 transition text-center leading-tight">
+                      Tải ảnh/video
+                    </span>
+                  </button>
+                </div>
+
+                {/* Dropdown Camera Select Block (Removed) */}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'attendance' ? (
+        /* Tab 2 Content: Báo cáo chấm công (Report Builder) */
+        <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6 relative min-h-[400px]">
+          <div className={`flex flex-col space-y-6 flex-1 transition-all duration-300 ${!showAttendanceReportDemo ? 'blur-sm pointer-events-none select-none' : ''}`}>
+
+            {/* REPORT BUILDER CONTROLS PANEL */}
+            <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-6 shadow-2xl relative">
+              <div className="flex items-center justify-between mb-5 border-b border-[#21232d] pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-100 tracking-tight">Report Builder</h3>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
+                {/* Type Select */}
+                <div className="md:col-span-2 space-y-2 text-left relative">
+                  <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Type</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttTypeOpen(!isAttTypeOpen);
+                        setIsAttGroupOpen(false);
+                        setIsAttendanceAreaDropdownOpen(false);
+                        setIsAttExportOpen(false);
+                      }}
+                      className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                    >
+                      <span className="font-medium text-slate-200">{attendanceType}</span>
+                      <ChevronDown size={14} className="text-slate-400" />
+                    </button>
+                    {isAttTypeOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsAttTypeOpen(false)} />
+                        <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
+                          {[
+                            'Báo cáo theo ngày',
+                            'Báo cáo theo tuần',
+                            'Báo cáo theo tháng',
+                            // 'Late Arrivals & Early Leves',
+                            // 'Absence & Leave Summary',
+                            // 'Overtime Hours'
+                          ].map((typeOption) => (
+                            <button
+                              key={typeOption}
+                              type="button"
+                              onClick={() => {
+                                setAttendanceType(typeOption);
+                                setIsAttTypeOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceType === typeOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
+                                }`}
+                            >
+                              <span>{typeOption}</span>
+                              {attendanceType === typeOption && <Check size={14} className="text-[#00a2e8]" />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Chọn nhóm Select */}
+                <div className="md:col-span-2 space-y-2 text-left relative">
+                  <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn nhóm</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttGroupOpen(!isAttGroupOpen);
+                        setIsAttTypeOpen(false);
+                        setIsAttendanceAreaDropdownOpen(false);
+                        setIsAttExportOpen(false);
+                      }}
+                      className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                    >
+                      <span className="font-medium text-slate-200">
+                        {(() => {
+                          if (attendanceGroup === 'All') return 'Tất cả (All)';
+                          const matched = humanGroups.find(g => g.id === attendanceGroup);
+                          return matched ? matched.name : attendanceGroup;
+                        })()}
+                      </span>
+                      <ChevronDown size={14} className="text-slate-400" />
+                    </button>
+                    {isAttGroupOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsAttGroupOpen(false)} />
+                        <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
+                          {[
+                            { id: 'All', name: 'Tất cả (All)' },
+                            ...humanGroups
+                          ].map((grpOption) => (
+                            <button
+                              key={grpOption.id}
+                              type="button"
+                              onClick={() => {
+                                setAttendanceGroup(grpOption.id);
+                                setIsAttGroupOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceGroup === grpOption.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
+                                }`}
+                            >
+                              <span>{grpOption.name}</span>
+                              {attendanceGroup === grpOption.id && <Check size={14} className="text-[#00a2e8]" />}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Khu vực Multiselect Select */}
+                <div className="md:col-span-2 space-y-2 text-left relative">
+                  <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Khu vực</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttendanceAreaDropdownOpen(!isAttendanceAreaDropdownOpen);
+                        setIsAttTypeOpen(false);
+                        setIsAttGroupOpen(false);
+                        setIsAttExportOpen(false);
+                      }}
+                      className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                    >
+                      <span className="truncate pr-1">
+                        {(() => {
+                          if (selectedAttendanceAreas.length === 0) return 'Chưa chọn';
+                          if (selectedAttendanceAreas.length === areasData.length) return `Tất cả (${areasData.length} KV)`;
+                          return selectedAttendanceAreas.join(', ');
+                        })()}
+                      </span>
+                      <ChevronDown size={14} className={`text-slate-400 transition-transform ${isAttendanceAreaDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isAttendanceAreaDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsAttendanceAreaDropdownOpen(false)} />
+                        <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 p-2 space-y-1 w-[200px]">
+                          <div className="flex justify-between border-b border-[#2d2f3c]/60 pb-1.5 mb-1.5 px-1">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAttendanceAreas(areasData.map(a => a.name))}
+                              className="text-[10px] text-[#00a2e8] hover:underline font-semibold"
+                            >
+                              Chọn tất cả
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAttendanceAreas([])}
+                              className="text-[10px] text-slate-400 hover:underline font-semibold"
+                            >
+                              Bỏ chọn
+                            </button>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {areasData.map((area) => {
+                              const areaName = area.name;
+                              const isChecked = selectedAttendanceAreas.includes(areaName);
+                              return (
                                 <button
-                                  key={typeOption}
+                                  key={area.id}
                                   type="button"
                                   onClick={() => {
-                                    setAttendanceType(typeOption);
-                                    setIsAttTypeOpen(false);
+                                    if (isChecked) {
+                                      setSelectedAttendanceAreas(selectedAttendanceAreas.filter(a => a !== areaName));
+                                    } else {
+                                      setSelectedAttendanceAreas([...selectedAttendanceAreas, areaName]);
+                                    }
                                   }}
-                                  className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceType === typeOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
-                                    }`}
+                                  className="w-full flex items-center justify-between px-2 py-1.5 rounded text-left text-xs text-slate-200 hover:bg-[#20212a] transition cursor-pointer"
                                 >
-                                  <span>{typeOption}</span>
-                                  {attendanceType === typeOption && <Check size={14} className="text-[#00a2e8]" />}
+                                  <span className="truncate mr-2">{areaName}</span>
+                                  <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-all ${isChecked
+                                    ? 'border-[#00a2e8] bg-[#00a2e8]'
+                                    : 'border-[#2d2f3c] bg-[#111218]'
+                                    }`}>
+                                    {isChecked && <Check size={10} className="text-white font-bold" />}
+                                  </div>
                                 </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
 
-                    {/* Chọn nhóm Select */}
-                    <div className="md:col-span-3 space-y-2 text-left relative">
-                      <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn nhóm</label>
-                      <div className="relative">
+                {/* Conditional Date Filter rendering */}
+                {attendanceType === 'Báo cáo theo ngày' ? (
+                  /* Single Date Selector for Daily Summary */
+                  <div className="md:col-span-4 space-y-2 text-left relative">
+                    <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn ngày</label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={attendanceStartDate}
+                        onChange={(e) => {
+                          setAttendanceStartDate(e.target.value);
+                          setAttendanceEndDate(e.target.value);
+                        }}
+                        className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] focus:border-[#00a2e8] rounded-xl px-4 py-2 text-xs text-white focus:outline-none transition-all h-[42px] [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                ) : attendanceType === 'Báo cáo theo tuần' ? (
+                  /* Week Selector for Weekly Summary */
+                  <div className="md:col-span-4 space-y-2 text-left relative">
+                    <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn tuần</label>
+                    <div className="flex items-center space-x-2 h-[42px]">
+                      {/* Week selector container */}
+                      <div className="flex items-center space-x-1 bg-[#1c1d26] border border-[#2d2f3c] rounded-xl overflow-hidden h-full px-2">
+                        <span className="text-xs text-slate-400 font-semibold pr-1">Tuần</span>
                         <button
                           type="button"
-                          onClick={() => {
-                            setIsAttGroupOpen(!isAttGroupOpen);
-                            setIsAttTypeOpen(false);
-                            setIsAttExportOpen(false);
-                          }}
-                          className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-xl px-4 py-2.5 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[42px]"
+                          onClick={() => setAttendanceWeekNumber(prev => Math.max(1, prev - 1))}
+                          className="p-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] rounded transition-colors"
+                          title="Tuần trước"
                         >
-                          <span className="font-medium text-slate-200">
-                            {attendanceGroup === 'All' ? 'Tất cả (All)' : attendanceGroup}
-                          </span>
-                          <ChevronDown size={14} className="text-slate-400" />
+                          <ChevronDown size={14} className="rotate-90" />
                         </button>
-                        {isAttGroupOpen && (
-                          <>
-                            <div className="fixed inset-0 z-30" onClick={() => setIsAttGroupOpen(false)} />
-                            <div className="absolute left-0 right-0 mt-1.5 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 overflow-hidden">
-                              {[
-                                { id: 'All', name: 'Tất cả (All)' },
-                                { id: 'nhóm nhân viên A', name: 'nhóm nhân viên A' },
-                                { id: 'nhóm nhân viên B', name: 'nhóm nhân viên B' },
-                                { id: 'nhóm nhân viên C', name: 'nhóm nhân viên C' },
-                                { id: 'nhóm nhân viên D', name: 'nhóm nhân viên D' },
-                                { id: 'Khách hàng / Khác', name: 'Khách hàng / Khác' }
-                              ].map((grpOption) => (
-                                <button
-                                  key={grpOption.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setAttendanceGroup(grpOption.id);
-                                    setIsAttGroupOpen(false);
-                                  }}
-                                  className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between ${attendanceGroup === grpOption.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-bold' : 'text-slate-300'
-                                    }`}
-                                >
-                                  <span>{grpOption.name}</span>
-                                  {attendanceGroup === grpOption.id && <Check size={14} className="text-[#00a2e8]" />}
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
+                        <input
+                          type="number"
+                          min={1}
+                          max={53}
+                          value={attendanceWeekNumber}
+                          onChange={(e) => {
+                            const val = Math.max(1, Math.min(53, parseInt(e.target.value, 10) || 1));
+                            setAttendanceWeekNumber(val);
+                          }}
+                          className="w-10 bg-transparent text-xs text-white text-center font-mono focus:outline-none [&::-webkit-outer-spin-button]:[appearance:none] [&::-webkit-inner-spin-button]:[appearance:none] [&]:[-moz-appearance:textfield]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setAttendanceWeekNumber(prev => Math.min(53, prev + 1))}
+                          className="p-1 hover:bg-[#20212a] text-slate-400 hover:text-[#00a2e8] rounded transition-colors"
+                          title="Tuần sau"
+                        >
+                          <ChevronDown size={14} className="-rotate-90" />
+                        </button>
+                      </div>
+
+                      {/* Year Selector */}
+                      <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
+                        <span className="text-xs text-slate-400 font-semibold pr-2">Năm</span>
+                        <input
+                          type="number"
+                          min={2000}
+                          max={2100}
+                          value={attendanceYear}
+                          onChange={(e) => {
+                            const val = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
+                            setAttendanceYear(val);
+                          }}
+                          className="w-full bg-transparent text-xs text-white text-center font-mono focus:outline-none h-full"
+                        />
                       </div>
                     </div>
+                  </div>
+                ) : attendanceType === 'Báo cáo theo tháng' ? (
+                  /* Month Selector for Monthly Summary */
+                  <div className="md:col-span-4 space-y-2 text-left relative">
+                    <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Chọn tháng</label>
+                    <div className="flex items-center space-x-2 h-[42px]">
+                      {/* Month selector container */}
+                      <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
+                        <span className="text-xs text-slate-400 font-semibold pr-2">Tháng</span>
+                        <select
+                          value={attendanceMonthNumber}
+                          onChange={(e) => setAttendanceMonthNumber(Number(e.target.value))}
+                          className="w-full bg-transparent text-xs text-white focus:outline-none h-full appearance-none cursor-pointer font-mono"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                            <option key={m} value={m} className="bg-[#181921] text-white">
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={12} className="text-slate-400 shrink-0 pointer-events-none ml-1" />
+                      </div>
 
+                      {/* Year Selector */}
+                      <div className="flex items-center bg-[#1c1d26] border border-[#2d2f3c] rounded-xl px-2 h-full flex-1">
+                        <span className="text-xs text-slate-400 font-semibold pr-2">Năm</span>
+                        <input
+                          type="number"
+                          min={2000}
+                          max={2100}
+                          value={attendanceYear}
+                          onChange={(e) => {
+                            const val = Math.max(2000, Math.min(2100, parseInt(e.target.value, 10) || 2026));
+                            setAttendanceYear(val);
+                          }}
+                          className="w-full bg-transparent text-xs text-white text-center font-mono focus:outline-none h-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                     {/* Start Date */}
                     <div className="md:col-span-2 space-y-2 text-left relative">
                       <label className="text-[11px] font-bold text-slate-400 tracking-wider uppercase block">Start Date</label>
@@ -1890,517 +2410,786 @@ export const ReportPage = () => {
                         />
                       </div>
                     </div>
+                  </>
+                )}
 
-                    {/* Combined Export Split Button (CSV Dropdown) */}
-                    <div className="md:col-span-2 flex items-center justify-end relative h-[42px]">
-                      <div className="flex h-full w-full rounded-xl overflow-hidden shadow-lg border border-[#2d2f3c] bg-[#1c1d26]">
+                {/* Combined Export Split Button (CSV Dropdown) */}
+                <div className="md:col-span-2 flex items-center justify-end relative h-[42px]">
+                  <div className="flex h-full w-full rounded-xl overflow-hidden shadow-lg border border-[#2d2f3c] bg-[#1c1d26]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleExportAttendance(attendanceExportFormat);
+                      }}
+                      className="flex-1 flex items-center justify-center space-x-2 bg-[#00a2e8] hover:bg-[#008cc9] text-white text-xs font-bold uppercase tracking-wider transition-colors duration-150 cursor-pointer h-full"
+                    >
+                      <Download size={14} />
+                      <span>{attendanceExportFormat}</span>
+                    </button>
+
+                    <div className="w-[1px] bg-[#008cc9] h-full" />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttExportOpen(!isAttExportOpen);
+                        setIsAttTypeOpen(false);
+                        setIsAttGroupOpen(false);
+                      }}
+                      className="px-3 bg-[#00a2e8] hover:bg-[#008cc9] text-white flex items-center justify-center transition-colors duration-150 cursor-pointer h-full"
+                    >
+                      <ChevronDown size={13} className={`transition-transform duration-200 ${isAttExportOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
+
+                  {isAttExportOpen && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setIsAttExportOpen(false)} />
+                      <div className="absolute right-0 top-12 mt-1 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 w-48 overflow-hidden">
                         <button
                           type="button"
                           onClick={() => {
-                            handleExportAttendance(attendanceExportFormat);
+                            setAttendanceExportFormat('CSV');
+                            setIsAttExportOpen(false);
+                            handleExportAttendance('CSV');
                           }}
-                          className="flex-1 flex items-center justify-center space-x-2 bg-[#00a2e8] hover:bg-[#008cc9] text-white text-xs font-bold uppercase tracking-wider transition-colors duration-150 cursor-pointer h-full"
+                          className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
                         >
-                          <Download size={14} />
-                          <span>{attendanceExportFormat}</span>
+                          <span>Xuất tệp CSV (.csv)</span>
+                          {attendanceExportFormat === 'CSV' && <Check size={14} className="text-[#00a2e8]" />}
                         </button>
-
-                        <div className="w-[1px] bg-[#008cc9] h-full" />
-
                         <button
                           type="button"
                           onClick={() => {
-                            setIsAttExportOpen(!isAttExportOpen);
-                            setIsAttTypeOpen(false);
-                            setIsAttGroupOpen(false);
+                            setAttendanceExportFormat('XLSX');
+                            setIsAttExportOpen(false);
+                            handleExportAttendance('XLSX');
                           }}
-                          className="px-3 bg-[#00a2e8] hover:bg-[#008cc9] text-white flex items-center justify-center transition-colors duration-150 cursor-pointer h-full"
+                          className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
                         >
-                          <ChevronDown size={13} className={`transition-transform duration-200 ${isAttExportOpen ? 'rotate-180' : ''}`} />
+                          <span>Xuất tệp Excel (.xlsx)</span>
+                          {attendanceExportFormat === 'XLSX' && <Check size={14} className="text-[#00a2e8]" />}
                         </button>
                       </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                      {isAttExportOpen && (
+            {/* HIGH FIDELITY REPORT TABLE */}
+            {(attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng') && selectedWeeklyAttendee ? (
+              /* Weekly/Monthly Details Sub-view Page */
+              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col flex-1">
+                {/* Header */}
+                <div className="p-4 bg-[#181921] border-b border-[#21232d] flex items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWeeklyAttendee(null)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#20212a] hover:bg-[#2d2f3e] border border-[#2d2f3c] text-xs font-bold text-slate-300 hover:text-white transition-all cursor-pointer focus:outline-none"
+                    >
+                      <ArrowLeft size={13} />
+                      <span>Quay lại</span>
+                    </button>
+                    <div className="h-6 w-px bg-[#2d2f3c] mx-1" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-200">
+                        Chi tiết chấm công {attendanceType === 'Báo cáo theo tuần' ? 'tuần' : 'tháng'}: <span className="text-[#00a2e8]">{selectedWeeklyAttendee.ten}</span>
+                      </h4>
+                      <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        Mã NV: {selectedWeeklyAttendee.ma} • Nhóm: {selectedWeeklyAttendee.danhSach} • {attendanceType === 'Báo cáo theo tuần' ? `Tuần ${attendanceWeekNumber}` : `Tháng ${attendanceMonthNumber}`} ({attendanceStartDate} - {attendanceEndDate})
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Body (Split columns) */}
+                {(() => {
+                  const isWeekly = attendanceType === 'Báo cáo theo tuần';
+                  const logs = isWeekly
+                    ? generateWeeklyLogs(selectedWeeklyAttendee.ma, attendanceStartDate)
+                    : generateMonthlyLogs(selectedWeeklyAttendee.ma, attendanceMonthNumber, attendanceYear);
+                  const activeLog = logs.find(log => log.dateStr === selectedDetailDayStr) || logs[0];
+
+                  return (
+                    <div className="flex-1 flex overflow-hidden min-h-[350px]">
+                      {/* Left Column: Days list */}
+                      <div className="flex-1 overflow-auto border-r border-[#21232d]/40">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                              <th className="py-3 px-4">Thứ / Ngày</th>
+                              <th className="py-3 px-4">Làm lúc</th>
+                              <th className="py-3 px-4">Đến lúc</th>
+                              <th className="py-3 px-4 text-center">Tổng giờ ngày</th>
+                              <th className="py-3 px-4 text-center">Trạng thái</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
+                            {logs.map((log) => {
+                              const isSelected = activeLog.dateStr === log.dateStr;
+                              const hasNoLog = log.checkIn === 'Trống';
+
+                              return (
+                                <tr
+                                  key={log.dateStr}
+                                  onClick={() => setSelectedDetailDayStr(log.dateStr)}
+                                  className={`cursor-pointer transition-colors ${isSelected
+                                    ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                    : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                    }`}
+                                >
+                                  <td className={`py-3 px-4 font-sans font-medium ${isSelected ? 'text-[#00a2e8]' : 'text-slate-100'}`}>
+                                    {log.dayName} <span className="text-[10px] text-slate-500 font-mono ml-1">({log.dateStr.split('-').reverse().slice(0, 2).join('/')})</span>
+                                  </td>
+                                  <td className={`py-3 px-4 ${hasNoLog ? 'text-slate-500' : 'text-slate-300'}`}>
+                                    {log.checkIn}
+                                  </td>
+                                  <td className={`py-3 px-4 ${hasNoLog ? 'text-slate-500' : 'text-slate-300'}`}>
+                                    {log.checkOut}
+                                  </td>
+                                  <td className={`py-3 px-4 text-center font-semibold ${hasNoLog ? 'text-slate-500' : 'text-emerald-400'}`}>
+                                    {log.totalHours}
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    {hasNoLog ? (
+                                      <span className="px-2 py-0.5 rounded text-[9px] font-sans font-medium bg-slate-500/10 text-slate-500 border border-slate-500/10">Nghỉ</span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded text-[9px] font-sans font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Có mặt</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Right Column: Camera photos for selected day */}
+                      <div className="w-80 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
+                        {activeLog && activeLog.checkIn !== 'Trống' ? (
+                          <div className="p-4 space-y-4 text-left">
+                            <div className="pb-3 border-b border-[#2d2f3c]/60">
+                              <h4 className="font-bold text-xs text-white uppercase tracking-wider">
+                                Ảnh Camera - {activeLog.dayName}
+                              </h4>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                Ngày: {activeLog.dateStr.split('-').reverse().join('/')}
+                              </p>
+                            </div>
+
+                            {/* Entry Photo */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào</span>
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                                  {activeLog.checkIn}
+                                </span>
+                              </div>
+                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
+                                <img
+                                  src={getMeetingPhoto(selectedWeeklyAttendee.ma, false, 'in')}
+                                  alt="Check-in"
+                                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                />
+                                <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                  <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                  <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                  <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                </div>
+                                <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                  Check-in Gate
+                                </span>
+                                <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
+                                  99.4% MATCH
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Exit Photo */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra</span>
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                                  {activeLog.checkOut}
+                                </span>
+                              </div>
+                              <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
+                                <img
+                                  src={getMeetingPhoto(selectedWeeklyAttendee.ma, false, 'out')}
+                                  alt="Check-out"
+                                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                />
+                                <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                  <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                  <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                  <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                  <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                </div>
+                                <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                  Check-out Gate
+                                </span>
+                                <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
+                                  98.7% MATCH
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 space-y-2">
+                            <Clock size={28} className="text-slate-600 animate-pulse" />
+                            <p className="text-xs">Không có dữ liệu camera</p>
+                            <p className="text-[10px] text-slate-600 max-w-[200px]">Nhân viên không có bản ghi ra vào trong ngày {activeLog ? activeLog.dayName : 'này'}.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              /* HIGH FIDELITY REPORT TABLE */
+              <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col flex-1">
+                <div className="p-4 bg-[#181921] border-b border-[#21232d] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center space-x-2">
+                    <span className="p-1.5 rounded-lg bg-[#00a2e8]/10 border border-[#00a2e8]/20 text-[#00a2e8]">
+                      <FileText size={15} />
+                    </span>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-200">Dữ liệu Báo cáo: {attendanceType}</h4>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        {attendanceType === 'Báo cáo theo ngày'
+                          ? `Ngày: ${attendanceStartDate}`
+                          : `Từ ${attendanceStartDate} đến ${attendanceEndDate}`
+                        } • Nhóm: {attendanceGroup === 'All' ? 'Tất cả' : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup)}
+                      </p>
+                    </div>
+                  </div>
+                  {(() => {
+                    const baseEmployees = [
+                      { ma: "080203011585", ten: "Phan Hữu Thiên Phúc", danhSach: "nhóm nhân viên A" },
+                      { ma: "010203045567", ten: "Trần Phước Lợi", danhSach: "nhóm nhân viên B" },
+                      { ma: "090302012948", ten: "Lê Thị Bình", danhSach: "nhóm nhân viên B" },
+                      { ma: "080203011234", ten: "Hoàng Văn Nam", danhSach: "nhóm nhân viên C" },
+                      { ma: "080203011567", ten: "Nguyễn Thị Mai", danhSach: "nhóm nhân viên D" },
+                      { ma: "080203011888", ten: "Phạm Thành Long", danhSach: "nhóm nhân viên A" },
+                      { ma: "020205094857", ten: "Nguyễn Văn An", danhSach: "Khách hàng / Khác" },
+                      { ma: "030405060708", ten: "Vũ Thị Thủy", danhSach: "Khách hàng / Khác" }
+                    ];
+
+                    const selectedGroupName = attendanceGroup === 'All'
+                      ? 'All'
+                      : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
+
+                    const activeEmployees = baseEmployees.filter(emp =>
+                      selectedGroupName === 'All' || emp.danhSach.toLowerCase() === selectedGroupName.toLowerCase()
+                    );
+
+                    return (
+                      <div className="text-[11px] font-mono text-slate-400">
+                        Phát hiện: <span className="text-white font-bold font-mono">{activeEmployees.length}</span> nhân sự
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {(() => {
+                  const baseEmployees = [
+                    { ma: "080203011585", ten: "Phan Hữu Thiên Phúc", danhSach: "nhóm nhân viên A" },
+                    { ma: "010203045567", ten: "Trần Phước Lợi", danhSach: "nhóm nhân viên B" },
+                    { ma: "090302012948", ten: "Lê Thị Bình", danhSach: "nhóm nhân viên B" },
+                    { ma: "080203011234", ten: "Hoàng Văn Nam", danhSach: "nhóm nhân viên C" },
+                    { ma: "080203011567", ten: "Nguyễn Thị Mai", danhSach: "nhóm nhân viên D" },
+                    { ma: "080203011888", ten: "Phạm Thành Long", danhSach: "nhóm nhân viên A" },
+                    { ma: "020205094857", ten: "Nguyễn Văn An", danhSach: "Khách hàng / Khác" },
+                    { ma: "030405060708", ten: "Vũ Thị Thủy", danhSach: "Khách hàng / Khác" }
+                  ];
+
+                  const selectedGroupName = attendanceGroup === 'All'
+                    ? 'All'
+                    : (humanGroups.find(g => g.id === attendanceGroup)?.name || attendanceGroup);
+
+                  const activeEmployees = baseEmployees.filter(emp =>
+                    selectedGroupName === 'All' || emp.danhSach.toLowerCase() === selectedGroupName.toLowerCase()
+                  );
+
+                  const selectedAttendee = activeEmployees.find(emp => emp.ma === selectedAttendanceEmpCode) || activeEmployees[0];
+
+                  const isWeeklyOrMonthly = attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng';
+                  const showRightSidebar = !isWeeklyOrMonthly;
+
+                  return (
+                    <div className="flex-1 flex overflow-hidden min-h-[300px]">
+                      {/* Left Table Section */}
+                      <div className={`flex-1 overflow-auto ${showRightSidebar ? 'border-r border-[#21232d]/40' : ''}`}>
+                        <table className="w-full text-left border-collapse">
+                          {(() => {
+                            if (attendanceType === 'Báo cáo theo ngày' || attendanceType === 'Báo cáo theo tuần' || attendanceType === 'Báo cáo theo tháng') {
+                              return (
+                                <>
+                                  <thead>
+                                    <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                      <th className="py-3 px-4 text-center w-12">STT</th>
+                                      <th className="py-3 px-4">Mã NV</th>
+                                      <th className="py-3 px-4">Họ và Tên</th>
+                                      <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
+                                      {!isWeeklyOrMonthly && <th className="py-3 px-4">Giờ Vào</th>}
+                                      {!isWeeklyOrMonthly && <th className="py-3 px-4">Giờ Ra</th>}
+                                      <th className="py-3 px-4">Tổng giờ</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
+                                    {activeEmployees.map((emp, idx) => {
+                                      const isPhuc = emp.ma === "080203011585";
+                                      const isSelected = selectedAttendee && selectedAttendee.ma === emp.ma;
+                                      return (
+                                        <tr
+                                          key={emp.ma}
+                                          onClick={() => {
+                                            if (isWeeklyOrMonthly) {
+                                              setSelectedWeeklyAttendee(emp);
+                                              setSelectedDetailDayStr(attendanceStartDate);
+                                            } else {
+                                              setSelectedAttendanceEmpCode(emp.ma);
+                                            }
+                                          }}
+                                          className={`cursor-pointer transition-colors ${isSelected && !isWeeklyOrMonthly
+                                            ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                            : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                            }`}
+                                        >
+                                          <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                                          <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
+                                          <td className={`py-2.5 px-4 font-sans font-medium ${(isSelected && !isWeeklyOrMonthly) ? 'text-[#00a2e8]' : 'text-slate-100'}`}>{emp.ten}</td>
+                                          <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
+                                          {!isWeeklyOrMonthly && <td className="py-2.5 px-4 text-emerald-400 font-semibold">{isPhuc ? '08:02:11' : '07:55:04'}</td>}
+                                          {!isWeeklyOrMonthly && <td className="py-2.5 px-4 text-emerald-400 font-semibold">{isPhuc ? '17:35:45' : '17:30:12'}</td>}
+                                          <td className="py-2.5 px-4 text-white">
+                                            {(() => {
+                                              if (attendanceType === 'Báo cáo theo tuần') return isPhuc ? '44.25 h' : '43.75 h';
+                                              if (attendanceType === 'Báo cáo theo tháng') return isPhuc ? '174.5 h' : '176.0 h';
+                                              return '8.5 h';
+                                            })()}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </>
+                              );
+                            } else if (attendanceType === 'Late Arrivals & Early Leves') {
+                              return (
+                                <>
+                                  <thead>
+                                    <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                      <th className="py-3 px-4 text-center w-12">STT</th>
+                                      <th className="py-3 px-4">Mã NV</th>
+                                      <th className="py-3 px-4">Họ và Tên</th>
+                                      <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
+                                      <th className="py-3 px-4">Ngày</th>
+                                      <th className="py-3 px-4">Giờ Vào Thực Tế</th>
+                                      <th className="py-3 px-4">Đi muộn</th>
+                                      <th className="py-3 px-4">Về Sớm</th>
+                                      <th className="py-3 px-4">Lý do</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
+                                    {activeEmployees.slice(0, 3).map((emp, idx) => {
+                                      const isSelected = selectedAttendee && selectedAttendee.ma === emp.ma;
+                                      return (
+                                        <tr
+                                          key={emp.ma}
+                                          onClick={() => setSelectedAttendanceEmpCode(emp.ma)}
+                                          className={`cursor-pointer transition-colors ${isSelected
+                                            ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                            : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                            }`}
+                                        >
+                                          <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                                          <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
+                                          <td className={`py-2.5 px-4 font-sans font-medium ${isSelected ? 'text-[#00a2e8]' : 'text-slate-100'}`}>{emp.ten}</td>
+                                          <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
+                                          <td className="py-2.5 px-4 text-slate-400">09/07/2026</td>
+                                          <td className="py-2.5 px-4 text-rose-400 font-bold">08:15:32</td>
+                                          <td className="py-2.5 px-4 text-rose-400 font-bold">15 phút</td>
+                                          <td className="py-2.5 px-4 text-slate-400">0 phút</td>
+                                          <td className="py-2.5 px-4 font-sans">Kẹt xe</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </>
+                              );
+                            } else if (attendanceType === 'Absence & Leave Summary') {
+                              return (
+                                <>
+                                  <thead>
+                                    <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                      <th className="py-3 px-4 text-center w-12">STT</th>
+                                      <th className="py-3 px-4">Mã NV</th>
+                                      <th className="py-3 px-4">Họ và Tên</th>
+                                      <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
+                                      <th className="py-3 px-4 text-center">Nghỉ phép</th>
+                                      <th className="py-3 px-4 text-center">Không phép</th>
+                                      <th className="py-3 px-4 text-center">Nghỉ lễ</th>
+                                      <th className="py-3 px-4 text-center">Tổng ngày nghỉ</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
+                                    {activeEmployees.slice(2, 5).map((emp, idx) => {
+                                      const isSelected = selectedAttendee && selectedAttendee.ma === emp.ma;
+                                      return (
+                                        <tr
+                                          key={emp.ma}
+                                          onClick={() => setSelectedAttendanceEmpCode(emp.ma)}
+                                          className={`cursor-pointer transition-colors ${isSelected
+                                            ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                            : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                            }`}
+                                        >
+                                          <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                                          <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
+                                          <td className={`py-2.5 px-4 font-sans font-medium ${isSelected ? 'text-[#00a2e8]' : 'text-slate-100'}`}>{emp.ten}</td>
+                                          <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
+                                          <td className="py-2.5 px-4 text-center text-emerald-400">1.0</td>
+                                          <td className="py-2.5 px-4 text-center text-slate-400">0.0</td>
+                                          <td className="py-2.5 px-4 text-center text-slate-400">0.0</td>
+                                          <td className="py-2.5 px-4 text-center text-white font-bold">1.0 ngày</td>
+                                        </tr>
+                                      );
+                                    })}
+                                    {activeEmployees.length === 0 && (
+                                      <tr>
+                                        <td colSpan={8} className="py-6 text-center text-slate-500 font-sans">Không tìm thấy dữ liệu nghỉ vắng</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </>
+                              );
+                            } else { // Overtime Hours
+                              return (
+                                <>
+                                  <thead>
+                                    <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                      <th className="py-3 px-4 text-center w-12">STT</th>
+                                      <th className="py-3 px-4">Mã NV</th>
+                                      <th className="py-3 px-4">Họ và Tên</th>
+                                      <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
+                                      <th className="py-3 px-4">Ngày</th>
+                                      <th className="py-3 px-4 text-center">Giờ ra chuẩn</th>
+                                      <th className="py-3 px-4 text-center">Giờ ra thực tế</th>
+                                      <th className="py-3 px-4 text-center">Số giờ OT</th>
+                                      <th className="py-3 px-4 text-center">Phê duyệt</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
+                                    {activeEmployees.map((emp, idx) => {
+                                      const isPhuc = emp.ma === "080203011585";
+                                      const isSelected = selectedAttendee && selectedAttendee.ma === emp.ma;
+                                      return (
+                                        <tr
+                                          key={emp.ma}
+                                          onClick={() => setSelectedAttendanceEmpCode(emp.ma)}
+                                          className={`cursor-pointer transition-colors ${isSelected
+                                            ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                            : 'hover:bg-[#181921]/60 odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300'
+                                            }`}
+                                        >
+                                          <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                                          <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
+                                          <td className={`py-2.5 px-4 font-sans font-medium ${isSelected ? 'text-[#00a2e8]' : 'text-slate-100'}`}>{emp.ten}</td>
+                                          <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
+                                          <td className="py-2.5 px-4 text-slate-400">09/07/2026</td>
+                                          <td className="py-2.5 px-4 text-center text-slate-500">17:30:00</td>
+                                          <td className="py-2.5 px-4 text-center text-amber-400 font-bold">{isPhuc ? '19:30:15' : '18:45:00'}</td>
+                                          <td className="py-2.5 px-4 text-center text-emerald-400 font-bold">{isPhuc ? '2.0' : '1.25'} h</td>
+                                          <td className="py-2.5 px-4 text-center">
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20">Đã duyệt</span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </>
+                              );
+                            }
+                          })()}
+                        </table>
+                      </div>
+
+                      {/* Right Sidebar Details Panel */}
+                      {showRightSidebar && (
+                        <div className="w-72 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
+                          {selectedAttendee ? (
+                            <div className="p-4 space-y-4 text-left">
+                              <div className="pb-3 border-b border-[#2d2f3c]/60">
+                                <h4 className="font-bold text-xs text-white uppercase tracking-wider">{selectedAttendee.ten}</h4>
+                                <p className="text-[10px] text-slate-400 font-mono mt-0.5">Mã NV: {selectedAttendee.ma}</p>
+                                <p className="text-[9px] text-[#00a2e8] font-semibold mt-1">Nhóm: {selectedAttendee.danhSach}</p>
+                              </div>
+
+                              {/* Entry Section */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào</span>
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                                    {selectedAttendee.ma === "080203011585" ? '08:02:11' : '07:55:04'}
+                                  </span>
+                                </div>
+                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
+                                  <img
+                                    src={getMeetingPhoto(selectedAttendee.ma, false, 'in')}
+                                    alt="Check-in"
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                  />
+                                  <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                    <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                    <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                  </div>
+                                  <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                    Ảnh check-in
+                                  </span>
+                                  <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
+                                    99.4% MATCH
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Exit Section */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra</span>
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                                    {selectedAttendee.ma === "080203011585" ? '17:35:45' : '17:30:12'}
+                                  </span>
+                                </div>
+                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
+                                  <img
+                                    src={getMeetingPhoto(selectedAttendee.ma, false, 'out')}
+                                    alt="Check-out"
+                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                  />
+                                  <div className="absolute inset-2 border border-emerald-500/30 rounded pointer-events-none">
+                                    <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-emerald-400" />
+                                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-emerald-400" />
+                                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-emerald-400" />
+                                    <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-emerald-400" />
+                                  </div>
+                                  <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300">
+                                    Ảnh check-out
+                                  </span>
+                                  <span className="absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-emerald-500/20 text-emerald-400">
+                                    98.7% MATCH
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex-1 flex items-center justify-center text-slate-500 text-xs">
+                              Chọn nhân sự để xem chi tiết
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+          {!showAttendanceReportDemo && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0e12]/60 backdrop-blur-sm p-6 text-center">
+              <div className="bg-[#14151b] border border-[#2d2f3e] p-8 rounded-2xl shadow-2xl max-w-sm flex flex-col items-center">
+                <div className="p-3.5 bg-[#00a2e8]/10 rounded-full text-[#00a2e8] mb-4 animate-pulse">
+                  <Sparkles size={24} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-100 mb-2">Tính năng đang được hoàn thiện</h3>
+                <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">Giao diện Báo cáo chấm công đang trong quá trình phát triển và hoàn thiện dữ liệu thực tế.</p>
+                <button
+                  type="button"
+                  onClick={() => setShowAttendanceReportDemo(true)}
+                  className="px-5 py-2.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-xl text-xs font-bold transition shadow-lg shadow-[#00a2e8]/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  Xem bản mẫu
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Tab 3 Content: Báo cáo cuộc họp */
+        <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6">
+          {!isMeetingSearched ? (
+            /* Search Form view (Centered, spacious) */
+            <div className="flex-1 flex flex-col items-center py-6 px-4">
+              <div className="w-full max-w-6xl space-y-6">
+                {/* Top Filters Block */}
+                <div className="grid grid-cols-12 gap-5 w-full bg-[#14151b] border border-[#21232d] p-6 rounded-2xl shadow-2xl relative items-end">
+
+                  {/* Time filter: col-span-7 */}
+                  <div className="col-span-7 space-y-2 text-left">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Clock size={14} className="text-[#00a2e8]" />
+                      Khoảng thời gian tìm kiếm
+                    </label>
+                    <div className="grid grid-cols-[1fr_auto_1fr] gap-1 items-center">
+                      {/* Từ */}
+                      <div className="space-y-1">
+                        <div className="flex gap-2">
+                          <input
+                            type="time"
+                            value={meetingStartTime}
+                            onChange={(e) => setMeetingStartTime(e.target.value)}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
+                          />
+                          <input
+                            type="date"
+                            value={meetingStartDate}
+                            onChange={(e) => setMeetingStartDate(e.target.value)}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
+                          />
+                        </div>
+                      </div>
+                      <span className='h-fit'> - </span>
+                      {/* Đến */}
+                      <div className="space-y-1">
+                        <div className="flex gap-2">
+                          <input
+                            type="time"
+                            value={meetingEndTime}
+                            onChange={(e) => setMeetingEndTime(e.target.value)}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
+                          />
+                          <input
+                            type="date"
+                            value={meetingEndDate}
+                            onChange={(e) => setMeetingEndDate(e.target.value)}
+                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Room filter: col-span-3 */}
+                  <div className="col-span-3 space-y-2 relative text-left">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Layers size={14} className="text-[#00a2e8]" />
+                      Khu vực / Phòng họp
+                    </label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsMeetingAreaDropdownOpen(!isMeetingAreaDropdownOpen)}
+                        className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-lg px-3 py-2 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[38px]"
+                      >
+                        <span className="truncate pr-1">
+                          {(() => {
+                            const meetingAreas = areasData.filter(a => a.name !== 'Checkin Area' && a.name !== 'Checkout Area');
+                            return selectedMeetingAreas.length === 0
+                              ? 'Chưa chọn khu vực'
+                              : selectedMeetingAreas.length === meetingAreas.length
+                                ? `Tất cả (${meetingAreas.length} phòng)`
+                                : selectedMeetingAreas.join(', ');
+                          })()}
+                        </span>
+                        <ChevronDown size={14} className={`text-[#00a2e8] transition-transform duration-200 ${isMeetingAreaDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {isMeetingAreaDropdownOpen && (
                         <>
-                          <div className="fixed inset-0 z-30" onClick={() => setIsAttExportOpen(false)} />
-                          <div className="absolute right-0 top-12 mt-1 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 py-1.5 w-48 overflow-hidden">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAttendanceExportFormat('CSV');
-                                setIsAttExportOpen(false);
-                                handleExportAttendance('CSV');
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
-                            >
-                              <span>Xuất tệp CSV (.csv)</span>
-                              {attendanceExportFormat === 'CSV' && <Check size={14} className="text-[#00a2e8]" />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAttendanceExportFormat('XLSX');
-                                setIsAttExportOpen(false);
-                                handleExportAttendance('XLSX');
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs transition-colors hover:bg-[#20212a] flex items-center justify-between text-slate-300 hover:text-white"
-                            >
-                              <span>Xuất tệp Excel (.xlsx)</span>
-                              {attendanceExportFormat === 'XLSX' && <Check size={14} className="text-[#00a2e8]" />}
-                            </button>
+                          <div
+                            className="fixed inset-0 z-30"
+                            onClick={() => setIsMeetingAreaDropdownOpen(false)}
+                          />
+                          <div className="absolute right-0 left-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 p-2 space-y-1">
+                            <div className="flex justify-between border-b border-[#2d2f3c]/60 pb-1.5 mb-1.5 px-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const meetingAreas = areasData.filter(a => a.name !== 'Checkin Area' && a.name !== 'Checkout Area');
+                                  setSelectedMeetingAreas(meetingAreas.map(a => a.name));
+                                }}
+                                className="text-[10px] text-[#00a2e8] hover:underline font-semibold"
+                              >
+                                Chọn tất cả
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedMeetingAreas([])}
+                                className="text-[10px] text-slate-400 hover:underline font-semibold"
+                              >
+                                Bỏ chọn
+                              </button>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto space-y-1">
+                              {areasData.filter(a => a.name !== 'Checkin Area' && a.name !== 'Checkout Area').map((area) => {
+                                const areaOption = area.name;
+                                const isChecked = selectedMeetingAreas.includes(areaOption);
+                                return (
+                                  <button
+                                    key={area.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isChecked) {
+                                        setSelectedMeetingAreas(selectedMeetingAreas.filter(a => a !== areaOption));
+                                      } else {
+                                        setSelectedMeetingAreas([...selectedMeetingAreas, areaOption]);
+                                      }
+                                    }}
+                                    className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-left text-xs text-slate-200 hover:bg-[#20212a] transition cursor-pointer"
+                                  >
+                                    <span>{areaOption}</span>
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isChecked
+                                      ? 'border-[#00a2e8] bg-[#00a2e8]'
+                                      : 'border-[#2d2f3c] bg-[#111218]'
+                                      }`}>
+                                      {isChecked && <Check size={10} className="text-white font-bold" />}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </>
                       )}
                     </div>
                   </div>
-                </div>
 
-                {/* HIGH FIDELITY REPORT TABLE */}
-                <div className="bg-[#14151b] border border-[#21232d] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-                  <div className="p-4 bg-[#181921] border-b border-[#21232d] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center space-x-2">
-                      <span className="p-1.5 rounded-lg bg-[#00a2e8]/10 border border-[#00a2e8]/20 text-[#00a2e8]">
-                        <FileText size={15} />
-                      </span>
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-200">Dữ liệu Báo cáo: {attendanceType}</h4>
-                        <p className="text-[10px] text-slate-500 font-mono">Từ {attendanceStartDate} đến {attendanceEndDate} • Nhóm: {attendanceGroup === 'All' ? 'Tất cả' : attendanceGroup}</p>
-                      </div>
-                    </div>
-                    <div className="text-[11px] font-mono text-slate-400">
-                      Phát hiện: <span className="text-white font-bold font-mono">
-                        {attendanceGroup === 'All'
-                          ? '8'
-                          : attendanceGroup === 'nhóm nhân viên B'
-                            ? '2'
-                            : attendanceGroup === 'nhóm nhân viên A'
-                              ? '2'
-                              : '1'}
-                      </span> nhân sự
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      {/* Render table header and rows dynamically based on selected type */}
-                      {(() => {
-                        const baseEmployees = [
-                          { ma: "080203011585", ten: "Phan Hữu Thiên Phúc", danhSach: "nhóm nhân viên A" },
-                          { ma: "010203045567", ten: "Trần Phước Lợi", danhSach: "nhóm nhân viên B" },
-                          { ma: "090302012948", ten: "Lê Thị Bình", danhSach: "nhóm nhân viên B" },
-                          { ma: "080203011234", ten: "Hoàng Văn Nam", danhSach: "nhóm nhân viên C" },
-                          { ma: "080203011567", ten: "Nguyễn Thị Mai", danhSach: "nhóm nhân viên D" },
-                          { ma: "080203011888", ten: "Phạm Thành Long", danhSach: "nhóm nhân viên A" },
-                          { ma: "020205094857", ten: "Nguyễn Văn An", danhSach: "Khách hàng / Khác" },
-                          { ma: "030405060708", ten: "Vũ Thị Thủy", danhSach: "Khách hàng / Khác" }
-                        ];
-
-                        const activeEmployees = baseEmployees.filter(emp =>
-                          attendanceGroup === 'All' || emp.danhSach === attendanceGroup
-                        );
-
-                        if (attendanceType === 'Daily Summary') {
-                          return (
-                            <>
-                              <thead>
-                                <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                  <th className="py-3 px-4 text-center w-12">STT</th>
-                                  <th className="py-3 px-4">Mã NV</th>
-                                  <th className="py-3 px-4">Họ và Tên</th>
-                                  <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
-                                  <th className="py-3 px-4">Ngày</th>
-                                  <th className="py-3 px-4">Giờ Vào</th>
-                                  <th className="py-3 px-4">Giờ Ra</th>
-                                  <th className="py-3 px-4">Tổng giờ</th>
-                                  <th className="py-3 px-4 text-center">Trạng thái</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
-                                {activeEmployees.map((emp, idx) => {
-                                  const isPhuc = emp.ma === "080203011585";
-                                  return (
-                                    <tr key={emp.ma} className="hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300">
-                                      <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
-                                      <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
-                                      <td className="py-2.5 px-4 font-sans font-medium text-slate-100">{emp.ten}</td>
-                                      <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
-                                      <td className="py-2.5 px-4 text-slate-400">09/07/2026</td>
-                                      <td className="py-2.5 px-4 text-emerald-400 font-semibold">{isPhuc ? '08:02:11' : '07:55:04'}</td>
-                                      <td className="py-2.5 px-4 text-emerald-400 font-semibold">{isPhuc ? '17:35:45' : '17:30:12'}</td>
-                                      <td className="py-2.5 px-4 text-white">8.5 h</td>
-                                      <td className="py-2.5 px-4 text-center">
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Đúng giờ</span>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </>
-                          );
-                        } else if (attendanceType === 'Monthly Summary') {
-                          return (
-                            <>
-                              <thead>
-                                <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                  <th className="py-3 px-4 text-center w-12">STT</th>
-                                  <th className="py-3 px-4">Mã NV</th>
-                                  <th className="py-3 px-4">Họ và Tên</th>
-                                  <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
-                                  <th className="py-3 px-4 text-center">Công chuẩn</th>
-                                  <th className="py-3 px-4 text-center">Công thực tế</th>
-                                  <th className="py-3 px-4 text-center">Phút đi muộn</th>
-                                  <th className="py-3 px-4 text-center">Phút về sớm</th>
-                                  <th className="py-3 px-4 text-center">Tổng giờ công</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
-                                {activeEmployees.map((emp, idx) => {
-                                  const isPhuc = emp.ma === "080203011585";
-                                  return (
-                                    <tr key={emp.ma} className="hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300">
-                                      <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
-                                      <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
-                                      <td className="py-2.5 px-4 font-sans font-medium text-slate-100">{emp.ten}</td>
-                                      <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
-                                      <td className="py-2.5 px-4 text-center text-slate-400">22</td>
-                                      <td className="py-2.5 px-4 text-center text-white font-bold">{isPhuc ? '21.5' : '22.0'}</td>
-                                      <td className="py-2.5 px-4 text-center text-rose-400">{isPhuc ? '45' : '12'}</td>
-                                      <td className="py-2.5 px-4 text-center text-slate-400">0</td>
-                                      <td className="py-2.5 px-4 text-center text-emerald-400 font-bold">{isPhuc ? '172.5' : '176.0'} h</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </>
-                          );
-                        } else if (attendanceType === 'Late Arrivals & Early Leves') {
-                          return (
-                            <>
-                              <thead>
-                                <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                  <th className="py-3 px-4 text-center w-12">STT</th>
-                                  <th className="py-3 px-4">Mã NV</th>
-                                  <th className="py-3 px-4">Họ và Tên</th>
-                                  <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
-                                  <th className="py-3 px-4">Ngày</th>
-                                  <th className="py-3 px-4">Giờ Vào Thực Tế</th>
-                                  <th className="py-3 px-4">Đi muộn</th>
-                                  <th className="py-3 px-4">Về Sớm</th>
-                                  <th className="py-3 px-4">Lý do</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
-                                {activeEmployees.slice(0, 3).map((emp, idx) => (
-                                  <tr key={emp.ma} className="hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300">
-                                    <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
-                                    <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
-                                    <td className="py-2.5 px-4 font-sans font-medium text-slate-100">{emp.ten}</td>
-                                    <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
-                                    <td className="py-2.5 px-4 text-slate-400">09/07/2026</td>
-                                    <td className="py-2.5 px-4 text-rose-400 font-bold">08:15:32</td>
-                                    <td className="py-2.5 px-4 text-rose-400 font-bold">15 phút</td>
-                                    <td className="py-2.5 px-4 text-slate-400">0</td>
-                                    <td className="py-2.5 px-4 font-sans italic text-slate-400">Kẹt xe giờ cao điểm</td>
-                                  </tr>
-                                ))}
-                                {activeEmployees.length === 0 && (
-                                  <tr>
-                                    <td colSpan={9} className="py-6 text-center text-slate-500 font-sans">Không tìm thấy dữ liệu đi muộn về sớm</td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </>
-                          );
-                        } else if (attendanceType === 'Absence & Leave Summary') {
-                          return (
-                            <>
-                              <thead>
-                                <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                  <th className="py-3 px-4 text-center w-12">STT</th>
-                                  <th className="py-3 px-4">Mã NV</th>
-                                  <th className="py-3 px-4">Họ và Tên</th>
-                                  <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
-                                  <th className="py-3 px-4">Ngày vắng</th>
-                                  <th className="py-3 px-4">Loại nghỉ</th>
-                                  <th className="py-3 px-4">Lý do nghỉ</th>
-                                  <th className="py-3 px-4 text-center">Trạng thái duyệt</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
-                                {activeEmployees.slice(1, 3).map((emp, idx) => (
-                                  <tr key={emp.ma} className="hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300">
-                                    <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
-                                    <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
-                                    <td className="py-2.5 px-4 font-sans font-medium text-slate-100">{emp.ten}</td>
-                                    <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
-                                    <td className="py-2.5 px-4 text-slate-400">08/07/2026</td>
-                                    <td className="py-2.5 px-4 text-white font-medium">Nghỉ có lương (AL)</td>
-                                    <td className="py-2.5 px-4 font-sans text-slate-400">Khám sức khỏe định kỳ</td>
-                                    <td className="py-2.5 px-4 text-center">
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Đã duyệt</span>
-                                    </td>
-                                  </tr>
-                                ))}
-                                {activeEmployees.length === 0 && (
-                                  <tr>
-                                    <td colSpan={8} className="py-6 text-center text-slate-500 font-sans">Không tìm thấy dữ liệu nghỉ vắng</td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </>
-                          );
-                        } else { // Overtime Hours
-                          return (
-                            <>
-                              <thead>
-                                <tr className="bg-[#15161f] border-b border-[#21232d] text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                  <th className="py-3 px-4 text-center w-12">STT</th>
-                                  <th className="py-3 px-4">Mã NV</th>
-                                  <th className="py-3 px-4">Họ và Tên</th>
-                                  <th className="py-3 px-4">Nhóm / nhóm nhân viên</th>
-                                  <th className="py-3 px-4">Ngày</th>
-                                  <th className="py-3 px-4 text-center">Giờ ra chuẩn</th>
-                                  <th className="py-3 px-4 text-center">Giờ ra thực tế</th>
-                                  <th className="py-3 px-4 text-center">Số giờ OT</th>
-                                  <th className="py-3 px-4 text-center">Phê duyệt</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-[#1b1c24] text-xs font-mono">
-                                {activeEmployees.map((emp, idx) => {
-                                  const isPhuc = emp.ma === "080203011585";
-                                  return (
-                                    <tr key={emp.ma} className="hover:bg-[#181922] odd:bg-[#0e0f14] even:bg-[#101117] text-slate-300">
-                                      <td className="py-2.5 px-4 text-center text-slate-500 font-semibold">{idx + 1}</td>
-                                      <td className="py-2.5 px-4 text-amber-500 font-bold">{emp.ma}</td>
-                                      <td className="py-2.5 px-4 font-sans font-medium text-slate-100">{emp.ten}</td>
-                                      <td className="py-2.5 px-4 font-sans">{emp.danhSach}</td>
-                                      <td className="py-2.5 px-4 text-slate-400">09/07/2026</td>
-                                      <td className="py-2.5 px-4 text-center text-slate-500">17:30:00</td>
-                                      <td className="py-2.5 px-4 text-center text-amber-400 font-bold">{isPhuc ? '19:30:15' : '18:45:00'}</td>
-                                      <td className="py-2.5 px-4 text-center text-emerald-400 font-bold">{isPhuc ? '2.0' : '1.25'} h</td>
-                                      <td className="py-2.5 px-4 text-center">
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20">Đã duyệt</span>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </>
-                          );
-                        }
-                      })()}
-                    </table>
-                  </div>
-                </div>
-              </div>
-              {!showAttendanceReportDemo && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0d0e12]/60 backdrop-blur-sm p-6 text-center">
-                  <div className="bg-[#14151b] border border-[#2d2f3e] p-8 rounded-2xl shadow-2xl max-w-sm flex flex-col items-center">
-                    <div className="p-3.5 bg-[#00a2e8]/10 rounded-full text-[#00a2e8] mb-4 animate-pulse">
-                      <Sparkles size={24} />
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-100 mb-2">Tính năng đang được hoàn thiện</h3>
-                    <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">Giao diện Báo cáo chấm công đang trong quá trình phát triển và hoàn thiện dữ liệu thực tế.</p>
+                  {/* Search Button (Temporarily no functionality) */}
+                  <div className="col-span-2">
                     <button
                       type="button"
-                      onClick={() => setShowAttendanceReportDemo(true)}
-                      className="px-5 py-2.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-xl text-xs font-bold transition shadow-lg shadow-[#00a2e8]/20 flex items-center justify-center gap-1.5 cursor-pointer"
+                      onClick={() => {
+                        setAppliedStartDate(meetingStartDate);
+                        setAppliedEndDate(meetingEndDate);
+                        setAppliedStartTime(meetingStartTime);
+                        setAppliedEndTime(meetingEndTime);
+                        setAppliedMeetingAreas([...selectedMeetingAreas]);
+                      }}
+                      className="w-full flex items-center justify-center space-x-1.5 px-2 h-[38px] bg-[#00a2e8] hover:bg-[#008cc9] text-white border border-[#00a2e8] rounded-lg text-[11px] font-bold uppercase transition-all duration-200 cursor-pointer shadow-md shadow-[#00a2e8]/10"
                     >
-                      Xem bản mẫu
+                      <Search size={12} />
+                      <span>Tìm kiếm</span>
                     </button>
                   </div>
+
                 </div>
-              )}
-            </div>
-            ) : (
-            /* Tab 3 Content: Báo cáo cuộc họp */
-            <div className="flex-1 p-6 flex flex-col bg-[#0d0e12] overflow-y-auto space-y-6">
-              {!isMeetingSearched ? (
-                /* Search Form view (Centered, spacious) */
-                <div className="flex-1 flex flex-col items-center py-6 px-4">
-                  <div className="w-full max-w-6xl space-y-6">
-                    {/* Top Filters Block */}
-                    <div className="grid grid-cols-12 gap-5 w-full bg-[#14151b] border border-[#21232d] p-6 rounded-2xl shadow-2xl relative items-end">
 
-                      {/* Time filter: col-span-7 */}
-                      <div className="col-span-7 space-y-2 text-left">
-                        <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                          <Clock size={14} className="text-[#00a2e8]" />
-                          Khoảng thời gian tìm kiếm
-                        </label>
-                        <div className="grid grid-cols-[1fr_auto_1fr] gap-1 items-center">
-                          {/* Từ */}
-                          <div className="space-y-1">
-                            <div className="flex gap-2">
-                              <input
-                                type="time"
-                                value={meetingStartTime}
-                                onChange={(e) => setMeetingStartTime(e.target.value)}
-                                className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
-                              />
-                              <input
-                                type="date"
-                                value={meetingStartDate}
-                                onChange={(e) => setMeetingStartDate(e.target.value)}
-                                className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
-                              />
-                            </div>
-                          </div>
-                          <span className='h-fit'> - </span>
-                          {/* Đến */}
-                          <div className="space-y-1">
-                            <div className="flex gap-2">
-                              <input
-                                type="time"
-                                value={meetingEndTime}
-                                onChange={(e) => setMeetingEndTime(e.target.value)}
-                                className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
-                              />
-                              <input
-                                type="date"
-                                value={meetingEndDate}
-                                onChange={(e) => setMeetingEndDate(e.target.value)}
-                                className="w-full bg-[#1c1d26] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none transition-all"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Room filter: col-span-3 */}
-                      <div className="col-span-3 space-y-2 relative text-left">
-                        <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                          <Layers size={14} className="text-[#00a2e8]" />
-                          Khu vực / Phòng họp
-                        </label>
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setIsMeetingAreaDropdownOpen(!isMeetingAreaDropdownOpen)}
-                            className="w-full bg-[#1c1d26] border border-[#2d2f3c] hover:border-[#00a2e8] rounded-lg px-3 py-2 text-xs text-white text-left flex items-center justify-between transition-all focus:outline-none h-[38px]"
-                          >
-                            <span className="truncate pr-1">
-                              {(() => {
-                                const meetingAreas = areasData.filter(a => a.name !== 'Checkin Area' && a.name !== 'Checkout Area');
-                                return selectedMeetingAreas.length === 0
-                                  ? 'Chưa chọn khu vực'
-                                  : selectedMeetingAreas.length === meetingAreas.length
-                                    ? `Tất cả (${meetingAreas.length} phòng)`
-                                    : selectedMeetingAreas.join(', ');
-                              })()}
-                            </span>
-                            <ChevronDown size={14} className={`text-[#00a2e8] transition-transform duration-200 ${isMeetingAreaDropdownOpen ? 'rotate-180' : ''}`} />
-                          </button>
-
-                          {isMeetingAreaDropdownOpen && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-30"
-                                onClick={() => setIsMeetingAreaDropdownOpen(false)}
-                              />
-                              <div className="absolute right-0 left-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded-xl shadow-2xl z-40 p-2 space-y-1">
-                                <div className="flex justify-between border-b border-[#2d2f3c]/60 pb-1.5 mb-1.5 px-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const meetingAreas = areasData.filter(a => a.name !== 'Checkin Area' && a.name !== 'Checkout Area');
-                                      setSelectedMeetingAreas(meetingAreas.map(a => a.name));
-                                    }}
-                                    className="text-[10px] text-[#00a2e8] hover:underline font-semibold"
-                                  >
-                                    Chọn tất cả
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedMeetingAreas([])}
-                                    className="text-[10px] text-slate-400 hover:underline font-semibold"
-                                  >
-                                    Bỏ chọn
-                                  </button>
-                                </div>
-                                <div className="max-h-48 overflow-y-auto space-y-1">
-                                  {areasData.filter(a => a.name !== 'Checkin Area' && a.name !== 'Checkout Area').map((area) => {
-                                    const areaOption = area.name;
-                                    const isChecked = selectedMeetingAreas.includes(areaOption);
-                                    return (
-                                      <button
-                                        key={area.id}
-                                        type="button"
-                                        onClick={() => {
-                                          if (isChecked) {
-                                            setSelectedMeetingAreas(selectedMeetingAreas.filter(a => a !== areaOption));
-                                          } else {
-                                            setSelectedMeetingAreas([...selectedMeetingAreas, areaOption]);
-                                          }
-                                        }}
-                                        className="w-full flex items-center justify-between px-2.5 py-1.5 rounded text-left text-xs text-slate-200 hover:bg-[#20212a] transition cursor-pointer"
-                                      >
-                                        <span>{areaOption}</span>
-                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isChecked
-                                            ? 'border-[#00a2e8] bg-[#00a2e8]'
-                                            : 'border-[#2d2f3c] bg-[#111218]'
-                                          }`}>
-                                          {isChecked && <Check size={10} className="text-white font-bold" />}
-                                        </div>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Search Button (Temporarily no functionality) */}
-                      <div className="col-span-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAppliedStartDate(meetingStartDate);
-                            setAppliedEndDate(meetingEndDate);
-                            setAppliedStartTime(meetingStartTime);
-                            setAppliedEndTime(meetingEndTime);
-                            setAppliedMeetingAreas([...selectedMeetingAreas]);
-                          }}
-                          className="w-full flex items-center justify-center space-x-1.5 px-2 h-[38px] bg-[#00a2e8] hover:bg-[#008cc9] text-white border border-[#00a2e8] rounded-lg text-[11px] font-bold uppercase transition-all duration-200 cursor-pointer shadow-md shadow-[#00a2e8]/10"
-                        >
-                          <Search size={12} />
-                          <span>Tìm kiếm</span>
-                        </button>
-                      </div>
-
-                    </div>
-
-                    {/* List of Created Meetings */}
-                    <div className="mt-8 space-y-4 text-left">
-                      <div className="flex items-center justify-between border-b border-[#21232d] pb-2.5">
-                        <h4 className="font-bold text-xs uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                          <Calendar size={14} className="text-[#00a2e8]" />
-                          Danh sách cuộc họp đã tạo ({(() => {
-                            const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
-                              return new Date(`${dateStr}T${timeStr || '00:00'}`).getTime();
-                            };
-                            return schMeetingSavedData.filter((meet: any) => {
-                              const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
-                              const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
-                              const filterStart = getMeetingTimestamp(appliedStartDate, appliedStartTime);
-                              const filterEnd = getMeetingTimestamp(appliedEndDate, appliedEndTime);
-
-                              const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
-                              const isInArea = appliedMeetingAreas.includes(meet.area);
-                              return isInTimeRange && isInArea;
-                            }).length;
-                          })()})
-                        </h4>
-                        <span className="text-[10px] text-slate-400 font-medium">💡 Click vào cuộc họp để xem chi tiết báo cáo tham dự</span>
-                      </div>
-
-                      {(() => {
+                {/* List of Created Meetings */}
+                <div className="mt-8 space-y-4 text-left">
+                  <div className="flex items-center justify-between border-b border-[#21232d] pb-2.5">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                      <Calendar size={14} className="text-[#00a2e8]" />
+                      Danh sách cuộc họp đã tạo ({(() => {
                         const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
                           return new Date(`${dateStr}T${timeStr || '00:00'}`).getTime();
                         };
-                        const filteredMeetings = schMeetingSavedData.filter((meet: any) => {
+                        return schMeetingSavedData.filter((meet: any) => {
                           const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
                           const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
                           const filterStart = getMeetingTimestamp(appliedStartDate, appliedStartTime);
@@ -2409,1245 +3198,1226 @@ export const ReportPage = () => {
                           const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
                           const isInArea = appliedMeetingAreas.includes(meet.area);
                           return isInTimeRange && isInArea;
-                        });
-
-                        if (filteredMeetings.length === 0) {
-                          return (
-                            <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-8 text-center text-slate-500">
-                              <AlertTriangle size={32} className="mx-auto text-slate-600 mb-2 animate-pulse" />
-                              <span className="text-xs font-semibold text-slate-400 block mb-1">Không tìm thấy cuộc họp nào</span>
-                              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">Vui lòng thay đổi thời gian lọc hoặc khu vực/phòng họp để hiển thị danh sách cuộc họp.</p>
-                            </div>
-                          );
-                        }
-
-                        const mapDepToLogGroup = (dep: string): string => {
-                          if (dep === 'nhóm nhân viên 1' || dep === 'nhóm nhân viên 1') return 'nhóm nhân viên A';
-                          if (dep === 'nhóm nhân viên 2' || dep === 'nhóm nhân viên 2') return 'nhóm nhân viên B';
-                          if (dep === 'Nhóm nhân viên C') return 'nhóm nhân viên C';
-                          if (dep === 'Nhóm nhân viên D' || dep === 'Phòng nhân sự') return 'nhóm nhân viên D';
-                          return dep;
-                        };
-
-                        const handleSelectMeeting = async (meet: any) => {
-                          setSelectedMeetingReport(meet);
-                          setMeetingDate(meet.date);
-                          setMeetingStartTime(meet.startTime);
-                          setMeetingEndTime(meet.endTime);
-                          const mappedGroups = (meet.departments || []).map(mapDepToLogGroup);
-                          setMeetingGroups(mappedGroups);
-                          setIsMeetingSearched(true);
-                          setMeetingCurrentPage(1);
-
-                          setIsLoadingReport(true);
-                          try {
-                            const baseUrl = getBackendUrl();
-                            const res = await fetch(`${baseUrl}/meeting/${meet.id}/attendance-report`);
-                            if (res.ok) {
-                              const data = await res.json();
-                              setMeetingReportData(data);
-                              console.log('--- LCMS ATTENDANCE REPORT QUERY ---');
-                              console.log('SQL Query:\n', data.query);
-                              console.log('Check-in Query Parameters:\n', data.paramsCheckin);
-                              console.log('Check-out Query Parameters:\n', data.paramsCheckout);
-                              console.log('Attendance Aggregated Result:\n', data.attendance);
-                              console.log('------------------------------------');
-                            }
-                          } catch (err) {
-                            console.error('Failed to load meeting attendance report:', err);
-                          } finally {
-                            setIsLoadingReport(false);
-                          }
-                        };
-
-                        return (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {filteredMeetings.map((meet: any) => (
-                              <div
-                                key={meet.id}
-                                onClick={() => handleSelectMeeting(meet)}
-                                className="bg-[#14151b] border border-[#21232d] hover:border-[#00a2e8]/50 rounded-2xl p-4 cursor-pointer transition-all duration-150 hover:scale-[1.01] hover:bg-[#1a1b24] shadow-md group relative overflow-hidden text-left"
-                              >
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#00a2e8]" />
-
-                                <div className="pl-2 space-y-2.5">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <h5 className="font-bold text-xs text-white group-hover:text-[#00a2e8] transition truncate animate-pulse" title={meet.title}>
-                                      {meet.title}
-                                    </h5>
-                                    <span className="shrink-0 bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[9px] font-semibold border border-slate-700/50">
-                                      {meet.area}
-                                    </span>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 font-medium">
-                                    <div className="flex items-center gap-1.5">
-                                      <Calendar size={12} className="text-slate-500" />
-                                      <span>{(() => {
-                                        const parts = meet.date.split('-');
-                                        return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : meet.date;
-                                      })()}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <Clock size={12} className="text-slate-500" />
-                                      <span>{meet.startTime} - {meet.endTime}</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="border-t border-[#21232d]/60 pt-2 flex items-center justify-between">
-                                    <div className="flex flex-wrap gap-1">
-                                      {(meet.departments || []).map((dep: string) => (
-                                        <span key={dep} className="bg-[#00a2e8]/10 text-[#00a2e8] px-1.5 py-0.5 rounded text-[8px] font-bold border border-[#00a2e8]/25">
-                                          {dep}
-                                        </span>
-                                      ))}
-                                    </div>
-                                    <span className="text-[9px] text-[#00a2e8] font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                                      Xem báo cáo →
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
+                        }).length;
+                      })()})
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-medium">💡 Click vào cuộc họp để xem chi tiết báo cáo tham dự</span>
                   </div>
-                </div>
-              ) : (
-                /* Table View (Display results with criteria summary and a Back button) */
-                <div className="flex-1 flex flex-col space-y-4">
-                  {/* Active Meeting Dashboard & Attendees Table */}
-                  <div className="flex-1 min-h-[300px] flex flex-col bg-[#14151b] border border-[#21232d] rounded-2xl shadow-xl overflow-hidden">
-                    {/* Dashboard Header */}
-                    <div className="px-5 py-4 border-b border-[#2d2f3c] bg-[#111218] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-                      <div className="space-y-1 text-left">
-                        <div className="flex items-center gap-2.5">
-                          <button
-                            onClick={() => {
-                              setIsMeetingSearched(false);
-                              setSelectedMeetingReport(null);
-                            }}
-                            className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#2d2f3c] hover:border-slate-400 bg-[#1c1d26] hover:bg-[#20212a] text-slate-300 hover:text-white transition cursor-pointer shrink-0"
-                            title="Quay lại danh sách"
-                          >
-                            <ArrowLeft size={14} />
-                          </button>
-                          <div className="text-left space-y-0.5">
-                            <h4 className="font-bold text-sm text-slate-100 uppercase tracking-wider flex items-center gap-2">
-                              <span>{selectedMeetingReport ? `Báo cáo: ${selectedMeetingReport.title}` : 'Báo cáo Chi Tiết Tham Dự Cuộc Họp'}</span>
-                              <span className="text-[11px] bg-[#00a2e8]/20 text-[#00a2e8] font-bold px-2 py-0.5 rounded border border-[#00a2e8]/25 uppercase font-mono">
-                                {selectedMeetingReport?.area || 'Phòng Họp'}
-                              </span>
-                            </h4>
-                            <p className="text-[10px] text-slate-400 font-medium">
-                              Thời gian: <span className="text-slate-300 font-semibold font-mono">{meetingStartTime} - {meetingEndTime}</span> ngày <span className="text-slate-300 font-semibold font-mono">{(() => {
-                                if (!meetingDate) return '';
-                                const parts = meetingDate.split('-');
-                                if (parts.length === 3) {
-                                  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-                                }
-                                return meetingDate;
-                              })()}</span> | Ban tham gia: <span className="text-[#00a2e8] font-bold">{(selectedMeetingReport?.departments || []).join(', ')}</span>
-                            </p>
-                          </div>
-                        </div>
-                      </div>
 
-                      {/* Search & Action Buttons */}
-                      <div className="flex items-center space-x-2.5">
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400">
-                            <Search size={12} />
-                          </span>
-                          <input
-                            type="text"
-                            placeholder="Tìm tên/mã nhân sự..."
-                            value={meetingSearchQuery}
-                            onChange={(e) => {
-                              setMeetingSearchQuery(e.target.value);
-                              setMeetingCurrentPage(1);
-                            }}
-                            className="bg-[#181921] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white w-44 focus:outline-none transition-all"
-                          />
-                        </div>
-                        <div className="relative">
-                          {/* Dropup menu - visible on click toggle */}
-                          {isMeetingExportOpen && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-30"
-                                onClick={() => setIsMeetingExportOpen(false)}
-                              />
-                              <div className="absolute top-full right-0 pt-1 z-40 min-w-[170px]">
-                                <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
-                                  <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-[#2d2f3e] text-left">
-                                    Xuất Excel
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      handleExportMeetingReportExcel(selectedMeetingReport, computedAttendeeRoster);
-                                      setIsMeetingExportOpen(false);
-                                    }}
-                                    className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
-                                  >
-                                    <Download size={12} />
-                                    <span>Toàn bộ ({computedAttendeeRoster.length})</span>
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      handleExportMeetingReportExcel(selectedMeetingReport, currentMeetingRoster);
-                                      setIsMeetingExportOpen(false);
-                                    }}
-                                    className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
-                                  >
-                                    <Download size={12} />
-                                    <span>Trong trang ({currentMeetingRoster.length})</span>
-                                  </button>
-                                  
-                                  <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-y border-[#2d2f3e] text-left">
-                                    Xuất PDF
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      handleExportMeetingReportPDF(computedAttendeeRoster);
-                                      setIsMeetingExportOpen(false);
-                                    }}
-                                    disabled={isPdfExporting}
-                                    className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer disabled:opacity-50"
-                                  >
-                                    <FileText size={12} />
-                                    <span>Toàn bộ ({computedAttendeeRoster.length})</span>
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      handleExportMeetingReportPDF(currentMeetingRoster);
-                                      setIsMeetingExportOpen(false);
-                                    }}
-                                    disabled={isPdfExporting}
-                                    className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer disabled:opacity-50"
-                                  >
-                                    <FileText size={12} />
-                                    <span>Trong trang ({currentMeetingRoster.length})</span>
-                                  </button>
-                                </div>
-                              </div>
-                            </>
-                          )}
+                  {(() => {
+                    const getMeetingTimestamp = (dateStr: string, timeStr: string) => {
+                      return new Date(`${dateStr}T${timeStr || '00:00'}`).getTime();
+                    };
+                    const filteredMeetings = schMeetingSavedData.filter((meet: any) => {
+                      const meetStart = getMeetingTimestamp(meet.date, meet.startTime);
+                      const meetEnd = getMeetingTimestamp(meet.date, meet.endTime);
+                      const filterStart = getMeetingTimestamp(appliedStartDate, appliedStartTime);
+                      const filterEnd = getMeetingTimestamp(appliedEndDate, appliedEndTime);
 
-                          <button
-                            onClick={() => setIsMeetingExportOpen(prev => !prev)}
-                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-lg text-xs font-semibold transition shadow-md shadow-[#00a2e8]/10"
-                          >
-                            <Download size={13} />
-                            <span>Xuất báo cáo</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                      const isInTimeRange = meetStart >= filterStart && meetEnd <= filterEnd;
+                      const isInArea = appliedMeetingAreas.includes(meet.area);
+                      return isInTimeRange && isInArea;
+                    });
 
-                    {/* Dynamic Stats Row inside Meeting */}
-                    {(() => {
-                      if (isLoadingReport) {
-                        return (
-                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400">
-                            <div className="w-8 h-8 border-3 border-[#00a2e8] border-t-transparent rounded-full animate-spin mb-3" />
-                            <span className="text-[11px] font-semibold uppercase tracking-wider font-sans">Đang tải báo cáo điểm danh từ lcms_server...</span>
-                          </div>
-                        );
-                      }
-
-                      const sortedAttendeeRoster = computedAttendeeRoster;
-
-                      // Find active selected attendee or default to the first one in the filtered list
-                      let activeSelectedCode = selectedMeetingEmpCode;
-                      if (sortedAttendeeRoster.length > 0) {
-                        const isStillInRoster = sortedAttendeeRoster.some(r => r.emp.ma === activeSelectedCode);
-                        if (!activeSelectedCode || !isStillInRoster) {
-                          activeSelectedCode = sortedAttendeeRoster[0].emp.ma;
-                        }
-                      } else {
-                        activeSelectedCode = null;
-                      }
-
-                      const selectedAttendee = sortedAttendeeRoster.find(r => r.emp.ma === activeSelectedCode);
-
-                      const inImages = [];
-                      if (selectedAttendee && selectedAttendee.thoiGianVao) {
-                        const event = selectedAttendee.emp.entryEvent;
-                        if (event) {
-                          if (event.face_image_path) {
-                            inImages.push({
-                              url: resolveImageUrl(event.face_image_path),
-                              label: 'Ảnh khuôn mặt sự kiện'
-                            });
-                          }
-                          if (event.full_image_path) {
-                            inImages.push({
-                              url: resolveImageUrl(event.full_image_path),
-                              label: 'Ảnh toàn cảnh sự kiện'
-                            });
-                          }
-                          if (event.cropped_face_images && event.cropped_face_images.length > 0) {
-                            inImages.push({
-                              url: event.cropped_face_images[0],
-                              label: 'Ảnh đăng ký'
-                            });
-                          }
-                        }
-                        if (inImages.length === 0) {
-                          inImages.push({
-                            url: getPhotoSrc(selectedAttendee, 'in'),
-                            label: 'Ảnh minh họa'
-                          });
-                        }
-                      }
-
-                      const outImages = [];
-                      if (selectedAttendee && selectedAttendee.thoiGianRa) {
-                        const event = selectedAttendee.emp.exitEvent;
-                        if (event) {
-                          if (event.face_image_path) {
-                            outImages.push({
-                              url: resolveImageUrl(event.face_image_path),
-                              label: 'Ảnh khuôn mặt sự kiện'
-                            });
-                          }
-                          if (event.full_image_path) {
-                            outImages.push({
-                              url: resolveImageUrl(event.full_image_path),
-                              label: 'Ảnh toàn cảnh sự kiện'
-                            });
-                          }
-                          if (event.cropped_face_images && event.cropped_face_images.length > 0) {
-                            outImages.push({
-                              url: event.cropped_face_images[0],
-                              label: 'Ảnh đăng ký'
-                            });
-                          }
-                        }
-                        if (outImages.length === 0) {
-                          outImages.push({
-                            url: getPhotoSrc(selectedAttendee, 'out'),
-                            label: 'Ảnh minh họa'
-                          });
-                        }
-                      }
-
-                      // Calculate metrics
-                      const totalRosterCount = sortedAttendeeRoster.length;
-                      const presentCount = sortedAttendeeRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
-                      const deptsCount = Array.from(new Set(sortedAttendeeRoster.map(r => r.emp.danhSach))).length;
-
-                      const beforeBeginSec = (selectedMeetingReport?.time_before_begin ?? 30) * 60;
-                      const afterEndSec = (selectedMeetingReport?.time_after_end ?? 30) * 60;
-                      const startSec = timeStringToSeconds(meetingStartTime);
-                      const endSec = timeStringToSeconds(meetingEndTime);
-
-                      const onTimeCount = sortedAttendeeRoster.filter(r => {
-                        if (!r.thoiGianVao || !r.thoiGianRa) return false;
-                        const inSec = timeStringToSeconds(r.thoiGianVao);
-                        const outSec = timeStringToSeconds(r.thoiGianRa);
-                        const checkinOk = inSec >= startSec - beforeBeginSec && inSec <= startSec;
-                        const checkoutOk = outSec >= endSec && outSec <= endSec + afterEndSec;
-                        return checkinOk && checkoutOk;
-                      }).length;
-
-                      const totalRatioSum = sortedAttendeeRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
-                      const averageAttendancePercentage = totalRosterCount > 0
-                        ? Math.round(totalRatioSum / totalRosterCount)
-                        : 100;
-
-                      // Meeting pagination calculation (shared from outer scope)
-                      const totalMeetingItems = sortedAttendeeRoster.length;
-                      const totalMeetingPages = Math.ceil(totalMeetingItems / meetingItemsPerPage) || 1;
-
-                      // Bound check current page
-                      const activeMeetingPage = Math.min(meetingCurrentPage, totalMeetingPages);
-
-                      const indexLastMeetingItem = activeMeetingPage * meetingItemsPerPage;
-                      const indexFirstMeetingItem = indexLastMeetingItem - meetingItemsPerPage;
-
+                    if (filteredMeetings.length === 0) {
                       return (
-                        <>
-                          {/* Mini Stats Badges */}
-                          <div className="grid grid-cols-3 gap-4 p-4 border-b border-[#2d2f3c]/60 bg-[#16171d]/40 shrink-0">
-                            {/* Stat 1 */}
-                            <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
-                              <div className="space-y-0.5 text-left">
-                                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Người tham dự</span>
-                                <span className="text-xl font-bold text-white font-mono">{presentCount}/{totalRosterCount}</span>
-                              </div>
-                              <div className="p-2 rounded-lg bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20">
-                                <Clock size={16} />
-                              </div>
-                            </div>
+                        <div className="bg-[#14151b] border border-[#21232d] rounded-2xl p-8 text-center text-slate-500">
+                          <AlertTriangle size={32} className="mx-auto text-slate-600 mb-2 animate-pulse" />
+                          <span className="text-xs font-semibold text-slate-400 block mb-1">Không tìm thấy cuộc họp nào</span>
+                          <p className="text-[11px] text-slate-500 max-w-sm mx-auto">Vui lòng thay đổi thời gian lọc hoặc khu vực/phòng họp để hiển thị danh sách cuộc họp.</p>
+                        </div>
+                      );
+                    }
 
-                            {/* Stat 2 */}
-                            <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
-                              <div className="space-y-0.5 text-left">
-                                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">nhóm nhân viên tham gia</span>
-                                <span className="text-xl font-bold text-white font-mono">{deptsCount}</span>
-                              </div>
-                              <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                <Layers size={16} />
-                              </div>
-                            </div>
 
-                            {/* Stat 3 */}
-                            <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
-                              <div className="space-y-0.5 text-left">
-                                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Phần trăm tham gia</span>
-                                <span className="text-xl font-bold text-white font-mono">
-                                  {averageAttendancePercentage}%
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {filteredMeetings.map((meet: any) => (
+                          <div
+                            key={meet.id}
+                            onClick={() => handleSelectMeeting(meet)}
+                            className="bg-[#14151b] border border-[#21232d] hover:border-[#00a2e8]/50 rounded-2xl p-4 cursor-pointer transition-all duration-150 hover:scale-[1.01] hover:bg-[#1a1b24] shadow-md group relative overflow-hidden text-left"
+                          >
+                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#00a2e8]" />
+
+                            <div className="pl-2 space-y-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <h5 className="font-bold text-xs text-white group-hover:text-[#00a2e8] transition truncate animate-pulse" title={meet.title}>
+                                  {meet.title}
+                                </h5>
+                                <span className="shrink-0 bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[9px] font-semibold border border-slate-700/50">
+                                  {meet.area}
                                 </span>
                               </div>
-                              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <Star size={16} fill="currentColor" />
+
+                              <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400 font-medium">
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar size={12} className="text-slate-500" />
+                                  <span>{(() => {
+                                    const parts = meet.date.split('-');
+                                    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : meet.date;
+                                  })()}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Clock size={12} className="text-slate-500" />
+                                  <span>{meet.startTime} - {meet.endTime}</span>
+                                </div>
+                              </div>
+
+                              <div className="border-t border-[#21232d]/60 pt-2 flex items-center justify-between">
+                                <div className="flex flex-wrap gap-1">
+                                  {(meet.departments || []).map((dep: string) => (
+                                    <span key={dep} className="bg-[#00a2e8]/10 text-[#00a2e8] px-1.5 py-0.5 rounded text-[8px] font-bold border border-[#00a2e8]/25">
+                                      {dep}
+                                    </span>
+                                  ))}
+                                </div>
+                                <span className="text-[9px] text-[#00a2e8] font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                                  Xem báo cáo →
+                                </span>
                               </div>
                             </div>
                           </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
 
-                          {/* Split Layout: Table + Sidebar Details */}
-                          <div className="flex-1 flex overflow-hidden min-h-[250px]">
-                            {/* Table Area (Scrollable) */}
-                            <div className="flex-1 overflow-auto bg-[#0d0e12] border-r border-[#21232d]/50">
-                              {sortedAttendeeRoster.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center p-8 text-slate-500 text-center">
-                                  <AlertTriangle size={36} className="text-slate-600 mb-2.5 animate-bounce" />
-                                  <span className="text-xs font-semibold uppercase tracking-wider mb-1 text-slate-400">Không tìm thấy người tham gia</span>
-                                  <p className="text-[11px] max-w-xs text-slate-500 leading-relaxed">
-                                    Vui lòng đổi ngày (ví dụ: 09/07/2026), thay đổi khoảng thời gian check-in hoặc chọn thêm nhóm nhân viên tham dự họp.
-                                  </p>
-                                </div>
-                              ) : (
-                                <table className="w-full text-xs text-left border-collapse">
-                                  <thead className="bg-[#181921] text-slate-300 font-semibold border-b border-[#21232d] uppercase tracking-wider text-[10px] sticky top-0 z-10">
-                                    <tr>
-                                      <th className="py-2.5 px-4 w-12 text-center">STT</th>
-                                      <th className="py-2.5 px-3">Tên nhân sự</th>
-                                      <th className="py-2.5 px-3">Mã nhân sự</th>
-                                      <th className="py-2.5 px-3">nhóm nhân viên</th>
-                                      <th className="py-2.5 px-3">Thời gian vào phòng</th>
-                                      <th className="py-2.5 px-3">Thời gian rời phòng</th>
-                                      <th className="py-2.5 px-3 text-center">% tham dự</th>
-                                      <th className="py-2.5 px-4 text-center">Đánh giá</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-[#21232d]/40 text-slate-300">
-                                    {currentMeetingRoster.map((item, index) => {
-                                      const { emp, thoiGianVao, thoiGianRa, evaluationText, evaluationType } = item;
-                                      const isSelected = activeSelectedCode === emp.ma;
+              </div>
+            </div>
+          ) : (
+            /* Table View (Display results with criteria summary and a Back button) */
+            <div className="flex-1 flex flex-col space-y-4">
+              {/* Active Meeting Dashboard & Attendees Table */}
+              <div className="flex-1 min-h-[300px] flex flex-col bg-[#14151b] border border-[#21232d] rounded-2xl shadow-xl overflow-hidden">
+                {/* Dashboard Header */}
+                <div className="px-5 py-4 border-b border-[#2d2f3c] bg-[#111218] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                  <div className="space-y-1 text-left">
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        onClick={() => {
+                          setIsMeetingSearched(false);
+                          setSelectedMeetingReport(null);
+                        }}
+                        className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#2d2f3c] hover:border-slate-400 bg-[#1c1d26] hover:bg-[#20212a] text-slate-300 hover:text-white transition cursor-pointer shrink-0"
+                        title="Quay lại danh sách"
+                      >
+                        <ArrowLeft size={14} />
+                      </button>
+                      <div className="text-left space-y-0.5">
+                        <h4 className="font-bold text-sm text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                          <span>{selectedMeetingReport ? `Báo cáo: ${selectedMeetingReport.title}` : 'Báo cáo Chi Tiết Tham Dự Cuộc Họp'}</span>
+                          <span className="text-[11px] bg-[#00a2e8]/20 text-[#00a2e8] font-bold px-2 py-0.5 rounded border border-[#00a2e8]/25 uppercase font-mono">
+                            {selectedMeetingReport?.area || 'Phòng Họp'}
+                          </span>
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                          Thời gian: <span className="text-slate-300 font-semibold font-mono">{meetingStartTime} - {meetingEndTime}</span> ngày <span className="text-slate-300 font-semibold font-mono">{(() => {
+                            if (!meetingDate) return '';
+                            const parts = meetingDate.split('-');
+                            if (parts.length === 3) {
+                              return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                            }
+                            return meetingDate;
+                          })()}</span> | Ban tham gia: <span className="text-[#00a2e8] font-bold">{(selectedMeetingReport?.departments || []).join(', ')}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-                                      return (
-                                        <tr
-                                          key={emp.ma}
-                                          onClick={() => {
-                                            setSelectedMeetingEmpCode(emp.ma);
-                                            setInImageIndex(0);
-                                            setOutImageIndex(0);
-                                          }}
-                                          className={`cursor-pointer transition-colors ${isSelected
-                                              ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
-                                              : 'hover:bg-[#181921]/60'
-                                            }`}
-                                        >
-                                          <td className="py-2 px-4 text-center font-mono text-slate-400">{indexFirstMeetingItem + index + 1}</td>
-                                          <td className={`py-2 px-3 font-semibold ${isSelected ? 'text-[#00a2e8]' : 'text-white'}`}>{emp.ten}</td>
-                                          <td className="py-2 px-3 font-mono text-slate-400">{emp.ma}</td>
-                                          <td className="py-2 px-3">
-                                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#21232d] border border-[#2d2f3c]/60 text-slate-300">
-                                              {emp.danhSach}
-                                            </span>
-                                          </td>
-                                          <td className={`py-2 px-3 font-mono ${item.entryColorClass}`}>{thoiGianVao || '--:--:--'}</td>
-                                          <td className={`py-2 px-3 font-mono ${item.exitColorClass}`}>{thoiGianRa || '--:--:--'}</td>
-                                          <td className="py-2 px-3 text-center font-mono font-semibold text-white">
-                                            {item.ratioPercent}%
-                                          </td>
-                                          <td className="py-2 px-4 text-center font-semibold">
-                                            <span className={`${item.evaluationColorClass} text-[11px]`}>
-                                              {evaluationText}
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              )}
-                            </div>
-
-                            {/* Right Sidebar Details Panel */}
-                            <div className="w-72 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
-                              {selectedAttendee ? (
-                                <div className="p-4 space-y-4 text-left">
-                                  {/* Entry Section */}
-                                  <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào phòng</span>
-                                      {selectedAttendee.thoiGianVao ? (
-                                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedAttendee.entryBadgeClass}`}>{selectedAttendee.thoiGianVao}</span>
-                                      ) : (
-                                        <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">Vắng</span>
-                                      )}
-                                    </div>
-                                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                      {inImages.length > 0 ? (
-                                        <>
-                                          <img
-                                            src={inImages[Math.min(inImageIndex, inImages.length - 1)]?.url}
-                                            alt={inImages[Math.min(inImageIndex, inImages.length - 1)]?.label}
-                                            className="w-full h-full object-contain transition-transform group-hover:scale-105"
-                                            referrerPolicy="no-referrer"
-                                          />
-                                          {inImages.length > 1 && (
-                                            <>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setInImageIndex(prev => (prev - 1 + inImages.length) % inImages.length);
-                                                }}
-                                                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
-                                              >
-                                                <ChevronLeft size={14} />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setInImageIndex(prev => (prev + 1) % inImages.length);
-                                                }}
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
-                                              >
-                                                <ChevronRight size={14} />
-                                              </button>
-                                            </>
-                                          )}
-                                          <div className={`absolute inset-2 border ${selectedAttendee.entryImageBorderClass} rounded pointer-events-none z-0`}>
-                                            <div className={`absolute top-0 left-0 w-2 h-2 border-t border-l ${selectedAttendee.entryImageCornersClass}`} />
-                                            <div className={`absolute top-0 right-0 w-2 h-2 border-t border-r ${selectedAttendee.entryImageCornersClass}`} />
-                                            <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l ${selectedAttendee.entryImageCornersClass}`} />
-                                            <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r ${selectedAttendee.entryImageCornersClass}`} />
-                                          </div>
-                                          <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300 z-10">
-                                            {inImages[Math.min(inImageIndex, inImages.length - 1)]?.label} ({Math.min(inImageIndex, inImages.length - 1) + 1}/{inImages.length})
-                                          </span>
-                                          <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.entryMatchBadgeClass} z-10`}>
-                                            99.2% MATCH
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <div className="flex flex-col items-center justify-center text-slate-600">
-                                          <Camera size={20} className="text-slate-700 mb-1" />
-                                          <span className="text-[9px] text-slate-500 font-medium">Không có dữ liệu vào</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Exit Section */}
-                                  <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra khỏi phòng</span>
-                                      {selectedAttendee.thoiGianRa ? (
-                                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedAttendee.exitBadgeClass}`}>{selectedAttendee.thoiGianRa}</span>
-                                      ) : (
-                                        <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">Vắng</span>
-                                      )}
-                                    </div>
-                                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
-                                      {outImages.length > 0 ? (
-                                        <>
-                                          <img
-                                            src={outImages[Math.min(outImageIndex, outImages.length - 1)]?.url}
-                                            alt={outImages[Math.min(outImageIndex, outImages.length - 1)]?.label}
-                                            className="w-full h-full object-contain transition-transform group-hover:scale-105"
-                                            referrerPolicy="no-referrer"
-                                          />
-                                          {outImages.length > 1 && (
-                                            <>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setOutImageIndex(prev => (prev - 1 + outImages.length) % outImages.length);
-                                                }}
-                                                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
-                                              >
-                                                <ChevronLeft size={14} />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setOutImageIndex(prev => (prev + 1) % outImages.length);
-                                                }}
-                                                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
-                                              >
-                                                <ChevronRight size={14} />
-                                              </button>
-                                            </>
-                                          )}
-                                          <div className={`absolute inset-2 border ${selectedAttendee.exitImageBorderClass} rounded pointer-events-none z-0`}>
-                                            <div className={`absolute top-0 left-0 w-2 h-2 border-t border-l ${selectedAttendee.exitImageCornersClass}`} />
-                                            <div className={`absolute top-0 right-0 w-2 h-2 border-t border-r ${selectedAttendee.exitImageCornersClass}`} />
-                                            <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l ${selectedAttendee.exitImageCornersClass}`} />
-                                            <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r ${selectedAttendee.exitImageCornersClass}`} />
-                                          </div>
-                                          <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300 z-10">
-                                            {outImages[Math.min(outImageIndex, outImages.length - 1)]?.label} ({Math.min(outImageIndex, outImages.length - 1) + 1}/{outImages.length})
-                                          </span>
-                                          <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.exitMatchBadgeClass} z-10`}>
-                                            98.6% MATCH
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <div className="flex flex-col items-center justify-center text-slate-600">
-                                          <Camera size={20} className="text-slate-700 mb-1" />
-                                          <span className="text-[9px] text-slate-500 font-medium">Không có dữ liệu ra</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="h-full flex flex-col items-center justify-center p-4 text-slate-500 text-center">
-                                  <AlertTriangle size={24} className="text-slate-600 mb-1" />
-                                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Chưa chọn nhân sự</span>
-                                  <p className="text-[9px] text-slate-500 mt-1 max-w-[180px]">
-                                    Vui lòng click chọn nhân sự trong danh sách để xem chi tiết ảnh nhận diện vào/ra.
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Bottom Status Bar with Pagination & Page size limit switcher */}
-                          <div className="h-14 bg-[#14151c] border-t border-[#21232d] px-4 flex items-center justify-between shrink-0">
-                            {/* Page size switcher: 20 - 30 - 40 - 50 */}
-                            <div className="flex items-center space-x-2 text-xs">
-                              <span className="text-slate-400 font-sans">Giới hạn:</span>
-                              <div className="flex rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#111218]">
-                                {[20, 30, 40, 50].map(limit => (
-                                  <button
-                                    key={limit}
-                                    type="button"
-                                    onClick={() => {
-                                      setMeetingItemsPerPage(limit);
-                                      setMeetingCurrentPage(1);
-                                    }}
-                                    className={`px-3 py-1 text-xs font-semibold font-mono transition cursor-pointer ${meetingItemsPerPage === limit
-                                        ? 'bg-[#00a2e8] text-white'
-                                        : 'bg-[#1c1d26] text-slate-300 hover:bg-[#20212a] hover:text-white'
-                                      }`}
-                                  >
-                                    {limit}
-                                  </button>
-                                ))}
+                  {/* Search & Action Buttons */}
+                  <div className="flex items-center space-x-2.5">
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-slate-400">
+                        <Search size={12} />
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Tìm tên/mã nhân sự..."
+                        value={meetingSearchQuery}
+                        onChange={(e) => {
+                          setMeetingSearchQuery(e.target.value);
+                          setMeetingCurrentPage(1);
+                        }}
+                        className="bg-[#181921] border border-[#2d2f3c] focus:border-[#00a2e8] rounded-lg pl-8 pr-3 py-1.5 text-xs text-white w-44 focus:outline-none transition-all"
+                      />
+                    </div>
+                    <div className="relative">
+                      {/* Dropup menu - visible on click toggle */}
+                      {isMeetingExportOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-30"
+                            onClick={() => setIsMeetingExportOpen(false)}
+                          />
+                          <div className="absolute top-full right-0 pt-1 z-40 min-w-[170px]">
+                            <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
+                              <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-[#2d2f3e] text-left">
+                                Xuất Excel
                               </div>
-                            </div>
-
-                            {/* Pagination Controls (same design as first tab) */}
-                            <div className="flex items-center space-x-1.5 font-mono text-xs">
                               <button
-                                type="button"
-                                onClick={() => setMeetingCurrentPage(1)}
-                                disabled={activeMeetingPage === 1}
-                                className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                                onClick={() => {
+                                  handleExportMeetingReportExcel(selectedMeetingReport, computedAttendeeRoster);
+                                  setIsMeetingExportOpen(false);
+                                }}
+                                className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
                               >
-                                <ChevronsLeft size={16} />
+                                <Download size={12} />
+                                <span>Toàn bộ ({computedAttendeeRoster.length})</span>
                               </button>
                               <button
-                                type="button"
-                                onClick={() => setMeetingCurrentPage(prev => Math.max(prev - 1, 1))}
-                                disabled={activeMeetingPage === 1}
-                                className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition text-xs flex items-center cursor-pointer"
+                                onClick={() => {
+                                  handleExportMeetingReportExcel(selectedMeetingReport, currentMeetingRoster);
+                                  setIsMeetingExportOpen(false);
+                                }}
+                                className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer"
                               >
-                                <ChevronLeft size={16} className="mr-0.5" />
-                                <span>Trang</span>
+                                <Download size={12} />
+                                <span>Trong trang ({currentMeetingRoster.length})</span>
                               </button>
 
-                              <div className="bg-[#1b1c25] border border-[#2e303f] px-3 py-1 rounded text-white flex items-center space-x-1 font-semibold font-sans">
-                                <input
-                                  type="text"
-                                  value={activeMeetingPage}
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value);
-                                    if (val > 0 && val <= totalMeetingPages) setMeetingCurrentPage(val);
-                                  }}
-                                  className="w-4 bg-transparent text-center font-mono focus:outline-none text-[#00a2e8]"
-                                />
-                                <span className="text-slate-500">/</span>
-                                <span>{totalMeetingPages}</span>
+                              <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-y border-[#2d2f3e] text-left">
+                                Xuất PDF
                               </div>
-
                               <button
-                                type="button"
-                                onClick={() => setMeetingCurrentPage(prev => Math.min(prev + 1, totalMeetingPages))}
-                                disabled={activeMeetingPage === totalMeetingPages}
-                                className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition text-xs flex items-center cursor-pointer"
+                                onClick={() => {
+                                  handleExportMeetingReportPDF(computedAttendeeRoster);
+                                  setIsMeetingExportOpen(false);
+                                }}
+                                disabled={isPdfExporting}
+                                className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer disabled:opacity-50"
                               >
-                                <span>Trang</span>
-                                <ChevronRight size={16} className="ml-0.5" />
+                                <FileText size={12} />
+                                <span>Toàn bộ ({computedAttendeeRoster.length})</span>
                               </button>
                               <button
-                                type="button"
-                                onClick={() => setMeetingCurrentPage(totalMeetingPages)}
-                                disabled={activeMeetingPage === totalMeetingPages}
-                                className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                                onClick={() => {
+                                  handleExportMeetingReportPDF(currentMeetingRoster);
+                                  setIsMeetingExportOpen(false);
+                                }}
+                                disabled={isPdfExporting}
+                                className="px-4 py-2 text-xs text-slate-200 hover:bg-[#00a2e8]/10 hover:text-[#00a2e8] flex items-center space-x-2 transition text-left whitespace-nowrap cursor-pointer disabled:opacity-50"
                               >
-                                <ChevronsRight size={16} />
+                                <FileText size={12} />
+                                <span>Trong trang ({currentMeetingRoster.length})</span>
                               </button>
-                            </div>
-
-                            {/* Total counts info */}
-                            <div className="text-xs text-slate-400 font-sans hidden sm:block">
-                              Tổng: <span className="font-bold text-slate-100 font-mono">{totalMeetingItems}</span>
                             </div>
                           </div>
                         </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
-            </div>
-              )}
+                      )}
 
-            {/* Sidebar Filter Overlay (Full-height right drawer) */}
-            <AnimatePresence>
-              {showFilterModal && (
-                <>
-                  {/* Dark backdrop overlay to dismiss when clicked outside */}
-                  <motion.div
-                    key="filter-backdrop"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.6 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-black z-40 cursor-pointer"
-                    onClick={() => setShowFilterModal(false)}
-                  />
-
-                  {/* Scrollable sidebar panel matching image layout */}
-                  <motion.div
-                    key="filter-sidebar"
-                    initial={{ x: '100%' }}
-                    animate={{ x: 0 }}
-                    exit={{ x: '100%' }}
-                    transition={{ type: 'tween', duration: 0.25 }}
-                    className="absolute right-0 top-0 bottom-0 w-80 bg-[#16171d] z-50 flex flex-col text-slate-200 shadow-2xl h-full"
-                  >
-                    {/* Top Header */}
-                    <div className="p-4 border-b border-transparent flex items-center justify-between bg-[#111218] shrink-0">
-                      <div className="flex items-center space-x-2">
-                        <Filter size={16} className="text-[#00a2e8]" />
-                        <span className="font-bold text-xs text-slate-200 uppercase tracking-wider">Bộ lọc</span>
-                      </div>
                       <button
-                        onClick={() => setShowFilterModal(false)}
-                        className="p-1 rounded bg-[#20212a] hover:bg-[#2c2d3a] text-slate-400 hover:text-white transition"
+                        onClick={() => setIsMeetingExportOpen(prev => !prev)}
+                        className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#00a2e8] hover:bg-[#008cc9] text-white rounded-lg text-xs font-semibold transition shadow-md shadow-[#00a2e8]/10"
                       >
-                        <X size={14} />
+                        <Download size={13} />
+                        <span>Xuất báo cáo</span>
                       </button>
                     </div>
+                  </div>
+                </div>
 
-                    {/* Filter inputs body (scrollable) */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-
-                      {/* 1. Mã Đối Tượng / Tên (Moved to top) */}
-                      <div className="space-y-1 text-left">
-                        <label className="text-[11px] text-slate-300 font-semibold block">Mã Đối Tượng / Tên</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            placeholder="Nhập tên hoặc mã..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00a2e8]"
-                          />
-                        </div>
+                {/* Dynamic Stats Row inside Meeting */}
+                {(() => {
+                  if (isLoadingReport) {
+                    return (
+                      <div className="flex-1 flex flex-col items-center justify-center p-12 text-slate-400">
+                        <div className="w-8 h-8 border-3 border-[#00a2e8] border-t-transparent rounded-full animate-spin mb-3" />
+                        <span className="text-[11px] font-semibold uppercase tracking-wider font-sans">Đang tải báo cáo điểm danh từ lcms_server...</span>
                       </div>
+                    );
+                  }
 
-                      {/* 2. Từ Ngày (Time included) */}
-                      <div className="space-y-1 text-left">
-                        <label className="text-[11px] text-slate-300 font-semibold block">Từ Ngày</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
-                          />
-                          <input
-                            type="time"
-                            value={startTime}
-                            onChange={(e) => setStartTime(e.target.value)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
-                          />
+                  const sortedAttendeeRoster = computedAttendeeRoster;
+
+                  // Find active selected attendee or default to the first one in the filtered list
+                  let activeSelectedCode = selectedMeetingEmpCode;
+                  if (sortedAttendeeRoster.length > 0) {
+                    const isStillInRoster = sortedAttendeeRoster.some(r => r.emp.ma === activeSelectedCode);
+                    if (!activeSelectedCode || !isStillInRoster) {
+                      activeSelectedCode = sortedAttendeeRoster[0].emp.ma;
+                    }
+                  } else {
+                    activeSelectedCode = null;
+                  }
+
+                  const selectedAttendee = sortedAttendeeRoster.find(r => r.emp.ma === activeSelectedCode);
+
+                  const inImages = [];
+                  if (selectedAttendee && selectedAttendee.thoiGianVao) {
+                    const event = selectedAttendee.emp.entryEvent;
+                    if (event) {
+                      if (event.face_image_path) {
+                        inImages.push({
+                          url: resolveImageUrl(event.face_image_path),
+                          label: 'Ảnh khuôn mặt sự kiện'
+                        });
+                      }
+                      if (event.full_image_path) {
+                        inImages.push({
+                          url: resolveImageUrl(event.full_image_path),
+                          label: 'Ảnh toàn cảnh sự kiện'
+                        });
+                      }
+                      if (event.cropped_face_images && event.cropped_face_images.length > 0) {
+                        inImages.push({
+                          url: event.cropped_face_images[0],
+                          label: 'Ảnh đăng ký'
+                        });
+                      }
+                    }
+                    if (inImages.length === 0) {
+                      inImages.push({
+                        url: getPhotoSrc(selectedAttendee, 'in'),
+                        label: 'Ảnh minh họa'
+                      });
+                    }
+                  }
+
+                  const outImages = [];
+                  if (selectedAttendee && selectedAttendee.thoiGianRa) {
+                    const event = selectedAttendee.emp.exitEvent;
+                    if (event) {
+                      if (event.face_image_path) {
+                        outImages.push({
+                          url: resolveImageUrl(event.face_image_path),
+                          label: 'Ảnh khuôn mặt sự kiện'
+                        });
+                      }
+                      if (event.full_image_path) {
+                        outImages.push({
+                          url: resolveImageUrl(event.full_image_path),
+                          label: 'Ảnh toàn cảnh sự kiện'
+                        });
+                      }
+                      if (event.cropped_face_images && event.cropped_face_images.length > 0) {
+                        outImages.push({
+                          url: event.cropped_face_images[0],
+                          label: 'Ảnh đăng ký'
+                        });
+                      }
+                    }
+                    if (outImages.length === 0) {
+                      outImages.push({
+                        url: getPhotoSrc(selectedAttendee, 'out'),
+                        label: 'Ảnh minh họa'
+                      });
+                    }
+                  }
+
+                  // Calculate metrics
+                  const totalRosterCount = sortedAttendeeRoster.length;
+                  const presentCount = sortedAttendeeRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
+                  const deptsCount = Array.from(new Set(sortedAttendeeRoster.map(r => r.emp.danhSach))).length;
+
+                  const beforeBeginSec = (selectedMeetingReport?.time_before_begin ?? 30) * 60;
+                  const afterEndSec = (selectedMeetingReport?.time_after_end ?? 30) * 60;
+                  const startSec = timeStringToSeconds(meetingStartTime);
+                  const endSec = timeStringToSeconds(meetingEndTime);
+
+                  const onTimeCount = sortedAttendeeRoster.filter(r => {
+                    if (!r.thoiGianVao || !r.thoiGianRa) return false;
+                    const inSec = timeStringToSeconds(r.thoiGianVao);
+                    const outSec = timeStringToSeconds(r.thoiGianRa);
+                    const checkinOk = inSec >= startSec - beforeBeginSec && inSec <= startSec;
+                    const checkoutOk = outSec >= endSec && outSec <= endSec + afterEndSec;
+                    return checkinOk && checkoutOk;
+                  }).length;
+
+                  const totalRatioSum = sortedAttendeeRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
+                  const averageAttendancePercentage = totalRosterCount > 0
+                    ? Math.round(totalRatioSum / totalRosterCount)
+                    : 100;
+
+                  // Meeting pagination calculation (shared from outer scope)
+                  const totalMeetingItems = sortedAttendeeRoster.length;
+                  const totalMeetingPages = Math.ceil(totalMeetingItems / meetingItemsPerPage) || 1;
+
+                  // Bound check current page
+                  const activeMeetingPage = Math.min(meetingCurrentPage, totalMeetingPages);
+
+                  const indexLastMeetingItem = activeMeetingPage * meetingItemsPerPage;
+                  const indexFirstMeetingItem = indexLastMeetingItem - meetingItemsPerPage;
+
+                  return (
+                    <>
+                      {/* Mini Stats Badges */}
+                      <div className="grid grid-cols-3 gap-4 p-4 border-b border-[#2d2f3c]/60 bg-[#16171d]/40 shrink-0">
+                        {/* Stat 1 */}
+                        <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
+                          <div className="space-y-0.5 text-left">
+                            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Người tham dự</span>
+                            <span className="text-xl font-bold text-white font-mono">{presentCount}/{totalRosterCount}</span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-[#00a2e8]/10 text-[#00a2e8] border border-[#00a2e8]/20">
+                            <Clock size={16} />
+                          </div>
                         </div>
-                      </div>
 
-                      {/* 3. Đến Ngày (Time included) */}
-                      <div className="space-y-1 text-left">
-                        <label className="text-[11px] text-slate-300 font-semibold block">Đến Ngày</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
-                          />
-                          <input
-                            type="time"
-                            value={endTime}
-                            onChange={(e) => setEndTime(e.target.value)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
-                          />
+                        {/* Stat 2 */}
+                        <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
+                          <div className="space-y-0.5 text-left">
+                            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">nhóm nhân viên tham gia</span>
+                            <span className="text-xl font-bold text-white font-mono">{deptsCount}</span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            <Layers size={16} />
+                          </div>
                         </div>
-                      </div>
 
-                      {/* 4. Khu Vực */}
-                      <div className="space-y-1 text-left relative">
-                        <label className="text-[11px] text-slate-300 font-semibold block">Khu Vực</label>
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setIsOpenZoneDropdown(!isOpenZoneDropdown)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] hover:border-[#00a2e8] rounded px-3 py-2 text-xs text-white text-left flex items-center justify-between transition focus:outline-none"
-                          >
-                            <span>{filterZone === 'All' ? 'Tất Cả' : filterZone}</span>
-                            <ChevronDown size={14} className="text-[#00a2e8]" />
-                          </button>
-
-                          <AnimatePresence>
-                            {isOpenZoneDropdown && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 5 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 5 }}
-                                className="absolute left-0 right-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded shadow-2xl z-50 overflow-hidden"
-                              >
-                                <div className="p-2 border-b border-[#2d2f3c] flex items-center bg-[#111218]">
-                                  <Search size={12} className="text-slate-500 mr-1.5 shrink-0" />
-                                  <input
-                                    type="text"
-                                    placeholder="Tìm nhanh khu vực..."
-                                    value={zoneSearch}
-                                    onChange={(e) => setZoneSearch(e.target.value)}
-                                    className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-[#00a2e8]"
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </div>
-                                <div className="max-h-40 overflow-y-auto">
-                                  {["All", ...areasData.map(a => a.name)]
-                                    .filter(z => z === 'All' || z.toLowerCase().includes(zoneSearch.toLowerCase()))
-                                    .map(zoneOption => (
-                                      <button
-                                        key={zoneOption}
-                                        type="button"
-                                        onClick={() => {
-                                          setFilterZone(zoneOption);
-                                          setIsOpenZoneDropdown(false);
-                                          setZoneSearch('');
-                                        }}
-                                        className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-[#20212a] ${filterZone === zoneOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-medium' : 'text-slate-300'
-                                          }`}
-                                      >
-                                        {zoneOption === 'All' ? 'Tất Cả' : zoneOption}
-                                      </button>
-                                    ))}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-
-                      {/* 5. Nhóm (Real Database values) */}
-                      <div className="space-y-1 text-left relative">
-                        <label className="text-[11px] text-slate-300 font-semibold block">Nhóm</label>
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setIsOpenListDropdown(!isOpenListDropdown)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] hover:border-[#00a2e8] rounded px-3 py-2 text-xs text-white text-left flex items-center justify-between transition focus:outline-none"
-                          >
-                            <span>{filterList === 'All' ? 'Tất Cả' : (humanGroups.find(g => g.id === filterList)?.name || filterList)}</span>
-                            <ChevronDown size={14} className="text-[#00a2e8]" />
-                          </button>
-
-                          <AnimatePresence>
-                            {isOpenListDropdown && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 5 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 5 }}
-                                className="absolute left-0 right-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded shadow-2xl z-50 overflow-hidden"
-                              >
-                                <div className="max-h-40 overflow-y-auto">
-                                  {[
-                                    { id: 'All', name: 'Tất Cả' },
-                                    ...humanGroups
-                                  ].map(listOption => (
-                                    <button
-                                      key={listOption.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setFilterList(listOption.id);
-                                        setIsOpenListDropdown(false);
-                                      }}
-                                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-[#20212a] ${filterList === listOption.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-medium' : 'text-slate-300'
-                                        }`}
-                                    >
-                                      {listOption.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-
-                      {/* 6. Loại sự kiện (New dropdown option) */}
-                      <div className="space-y-1 text-left relative">
-                        <label className="text-[11px] text-slate-300 font-semibold block">Loại sự kiện</label>
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setIsOpenEventTypeDropdown(!isOpenEventTypeDropdown)}
-                            className="w-full bg-[#181921] border border-[#2d2f3c] hover:border-[#00a2e8] rounded px-3 py-2 text-xs text-white text-left flex items-center justify-between transition focus:outline-none"
-                          >
-                            <span>
-                              {filterEventType === 'All' ? 'Tất Cả' : filterEventType === 'in' ? 'Đi vào' : 'Đi ra'}
+                        {/* Stat 3 */}
+                        <div className="bg-[#181921] border border-[#2d2f3c]/60 rounded-xl p-3 flex items-center justify-between">
+                          <div className="space-y-0.5 text-left">
+                            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Phần trăm tham gia</span>
+                            <span className="text-xl font-bold text-white font-mono">
+                              {averageAttendancePercentage}%
                             </span>
-                            <ChevronDown size={14} className="text-[#00a2e8]" />
-                          </button>
-
-                          <AnimatePresence>
-                            {isOpenEventTypeDropdown && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 5 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 5 }}
-                                className="absolute left-0 right-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded shadow-2xl z-50 overflow-hidden"
-                              >
-                                <div className="max-h-40 overflow-y-auto">
-                                  {[
-                                    { id: 'All', name: 'Tất Cả' },
-                                    { id: 'in', name: 'Đi vào' },
-                                    { id: 'out', name: 'Đi ra' }
-                                  ].map(opt => (
-                                    <button
-                                      key={opt.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setFilterEventType(opt.id as any);
-                                        setIsOpenEventTypeDropdown(false);
-                                      }}
-                                      className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-[#20212a] ${filterEventType === opt.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-medium' : 'text-slate-300'
-                                        }`}
-                                    >
-                                      {opt.name}
-                                    </button>
-                                  ))}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
+                          </div>
+                          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <Star size={16} fill="currentColor" />
+                          </div>
                         </div>
                       </div>
 
-                    </div>
+                      {/* Split Layout: Table + Sidebar Details */}
+                      <div className="flex-1 flex overflow-hidden min-h-[250px]">
+                        {/* Table Area (Scrollable) */}
+                        <div className="flex-1 overflow-auto bg-[#0d0e12] border-r border-[#21232d]/50">
+                          {sortedAttendeeRoster.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center p-8 text-slate-500 text-center">
+                              <AlertTriangle size={36} className="text-slate-600 mb-2.5 animate-bounce" />
+                              <span className="text-xs font-semibold uppercase tracking-wider mb-1 text-slate-400">Không tìm thấy người tham gia</span>
+                              <p className="text-[11px] max-w-xs text-slate-500 leading-relaxed">
+                                Vui lòng đổi ngày (ví dụ: 09/07/2026), thay đổi khoảng thời gian check-in hoặc chọn thêm nhóm nhân viên tham dự họp.
+                              </p>
+                            </div>
+                          ) : (
+                            <table className="w-full text-xs text-left border-collapse">
+                              <thead className="bg-[#181921] text-slate-300 font-semibold border-b border-[#21232d] uppercase tracking-wider text-[10px] sticky top-0 z-10">
+                                <tr>
+                                  <th className="py-2.5 px-4 w-12 text-center">STT</th>
+                                  <th className="py-2.5 px-3">Tên nhân sự</th>
+                                  <th className="py-2.5 px-3">Mã nhân sự</th>
+                                  <th className="py-2.5 px-3">nhóm nhân viên</th>
+                                  <th className="py-2.5 px-3">Thời gian vào phòng</th>
+                                  <th className="py-2.5 px-3">Thời gian rời phòng</th>
+                                  <th className="py-2.5 px-3 text-center">% tham dự</th>
+                                  <th className="py-2.5 px-4 text-center">Đánh giá</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#21232d]/40 text-slate-300">
+                                {currentMeetingRoster.map((item, index) => {
+                                  const { emp, thoiGianVao, thoiGianRa, evaluationText, evaluationType } = item;
+                                  const isSelected = activeSelectedCode === emp.ma;
 
-                    {/* Footer Buttons */}
-                    <div className="p-4 border-t border-transparent bg-[#111218] flex items-center justify-center space-x-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchQuery('');
-                          setFilterZone('All');
-                          setFilterList('All');
-                          setFilterEventType('All');
-                          setStartDate('');
-                          setEndDate('');
-                          setStartTime('');
-                          setEndTime('');
-                          setFilterTime('');
-                          setSearchType('text');
-                          setSearchImage(null);
-                          setThreshold(0.8);
-                          setAppliedSearch('');
-                          setAppliedZone('All');
-                          setAppliedList('All');
-                          setAppliedEventType('All');
-                          setAppliedStartDate('');
-                          setAppliedEndDate('');
-                          setAppliedStartTime('');
-                          setAppliedEndTime('');
-                          setCurrentPage(1);
-                        }}
-                        className="px-3 py-1.5 border border-[#2d2f3c] rounded text-xs text-slate-400 hover:text-white hover:bg-[#20212a] transition font-medium"
-                      >
-                        Xóa bộ lọc
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAppliedSearch(searchQuery);
-                          setAppliedZone(filterZone);
-                          setAppliedList(filterList);
-                          setAppliedEventType(filterEventType);
-                          setAppliedStartDate(startDate);
-                          setAppliedEndDate(endDate);
-                          setAppliedStartTime(startTime);
-                          setAppliedEndTime(endTime);
-                          setCurrentPage(1);
-                          setShowFilterModal(false);
-                        }}
-                        className="bg-[#008bc8] hover:bg-[#007cb3] text-white font-semibold text-xs py-1.5 px-6 rounded transition-all duration-200 shadow-md"
-                      >
-                        Tìm Kiếm
-                      </button>
-                    </div>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
+                                  return (
+                                    <tr
+                                      key={emp.ma}
+                                      onClick={() => {
+                                        setSelectedMeetingEmpCode(emp.ma);
+                                        setInImageIndex(0);
+                                        setOutImageIndex(0);
+                                      }}
+                                      className={`cursor-pointer transition-colors ${isSelected
+                                        ? 'bg-[#00a2e8]/10 text-[#00a2e8] hover:bg-[#00a2e8]/15 font-medium'
+                                        : 'hover:bg-[#181921]/60'
+                                        }`}
+                                    >
+                                      <td className="py-2 px-4 text-center font-mono text-slate-400">{indexFirstMeetingItem + index + 1}</td>
+                                      <td className={`py-2 px-3 font-semibold ${isSelected ? 'text-[#00a2e8]' : 'text-white'}`}>{emp.ten}</td>
+                                      <td className="py-2 px-3 font-mono text-slate-400">{emp.ma}</td>
+                                      <td className="py-2 px-3">
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#21232d] border border-[#2d2f3c]/60 text-slate-300">
+                                          {emp.danhSach}
+                                        </span>
+                                      </td>
+                                      <td className={`py-2 px-3 font-mono ${item.entryColorClass}`}>{thoiGianVao || '--:--:--'}</td>
+                                      <td className={`py-2 px-3 font-mono ${item.exitColorClass}`}>{thoiGianRa || '--:--:--'}</td>
+                                      <td className="py-2 px-3 text-center font-mono font-semibold text-white">
+                                        {item.ratioPercent}%
+                                      </td>
+                                      <td className="py-2 px-4 text-center font-semibold">
+                                        <span className={`${item.evaluationColorClass} text-[11px]`}>
+                                          {evaluationText}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
 
-            {/* Hidden Printable PDF Container */}
-            {(() => {
-              const pdfPresentCount = pdfExportRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
-              const pdfTotalCount = pdfExportRoster.length;
-              const pdfRatioSum = pdfExportRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
-              const pdfAvgPercent = pdfTotalCount > 0 ? Math.round(pdfRatioSum / pdfTotalCount) : 100;
-              
-              let evalColor = '#000000';
-              if (pdfAvgPercent > 95) {
-                evalColor = '#059669';
-              } else if (pdfAvgPercent > 75) {
-                evalColor = '#D97706';
-              } else {
-                evalColor = '#DC2626';
-              }
-              
-              return (
-                <div
-                  id="meeting-report-pdf-template"
-                  style={{
-                    position: 'absolute',
-                    left: '-9999px',
-                    top: '-9999px',
-                    width: '1024px',
-                    backgroundColor: '#ffffff',
-                    color: '#000000',
-                  }}
-                >
-                  <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
-                    <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
-                      BÁO CÁO THAM DỰ CUỘC HỌP
-                    </h2>
-                    
-                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
-                      <tbody>
-                        <tr>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tên cuộc họp:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{selectedMeetingReport?.title || ''}</td>
-                          <td style={{ border: 'none', padding: '8px', width: '20%' }}></td>
-                          <td style={{ border: 'none', padding: '8px', width: '30%' }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Khu vực:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.area || ''}</td>
-                          <td style={{ border: 'none', padding: '8px' }}></td>
-                          <td style={{ border: 'none', padding: '8px' }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Ngày:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.date || ''}</td>
-                          <td style={{ border: 'none', padding: '8px' }}></td>
-                          <td style={{ border: 'none', padding: '8px' }}></td>
-                        </tr>
-                        <tr>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ bắt đầu:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.startTime || ''}</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Nhóm nhân viên tham gia:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{(selectedMeetingReport?.departments || []).join(', ')}</td>
-                        </tr>
-                        <tr>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ kết thúc:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.endTime || ''}</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đánh giá tổng thể:</td>
-                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', color: evalColor }}>
-                            {`Tham gia ${pdfPresentCount}/${pdfTotalCount} - Tổng thời gian tham gia (${pdfAvgPercent}%)`}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                    
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>STT</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Mã NV</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Họ và tên</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Nhóm</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ vào</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ ra</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>% tham dự</th>
-                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Đánh giá</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pdfExportRoster.map((row, idx) => {
-                          let entryColor = '#000000';
-                          if (!row.thoiGianVao) {
-                            entryColor = '#94A3B8';
-                          } else {
-                            const inSec = timeStringToSeconds(row.thoiGianVao);
-                            const startSec = timeStringToSeconds(meetingStartTime);
-                            const latenessSec = inSec - startSec;
-                            if (latenessSec > 0) {
-                              if (latenessSec <= 900) {
-                                entryColor = '#000000';
-                              } else if (latenessSec <= 1800) {
-                                entryColor = '#D97706';
-                              } else {
-                                entryColor = '#DC2626';
-                              }
-                            }
-                          }
+                        {/* Right Sidebar Details Panel */}
+                        <div className="w-72 bg-[#14151c]/95 flex flex-col shrink-0 overflow-y-auto border-l border-[#21232d]/40">
+                          {selectedAttendee ? (
+                            <div className="p-4 space-y-4 text-left">
+                              {/* Entry Section */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc vào phòng</span>
+                                  {selectedAttendee.thoiGianVao ? (
+                                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedAttendee.entryBadgeClass}`}>{selectedAttendee.thoiGianVao}</span>
+                                  ) : (
+                                    <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">Vắng</span>
+                                  )}
+                                </div>
+                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
+                                  {inImages.length > 0 ? (
+                                    <>
+                                      <img
+                                        src={inImages[Math.min(inImageIndex, inImages.length - 1)]?.url}
+                                        alt={inImages[Math.min(inImageIndex, inImages.length - 1)]?.label}
+                                        className="w-full h-full object-contain transition-transform group-hover:scale-105"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      {inImages.length > 1 && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setInImageIndex(prev => (prev - 1 + inImages.length) % inImages.length);
+                                            }}
+                                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                          >
+                                            <ChevronLeft size={14} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setInImageIndex(prev => (prev + 1) % inImages.length);
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                          >
+                                            <ChevronRight size={14} />
+                                          </button>
+                                        </>
+                                      )}
+                                      <div className={`absolute inset-2 border ${selectedAttendee.entryImageBorderClass} rounded pointer-events-none z-0`}>
+                                        <div className={`absolute top-0 left-0 w-2 h-2 border-t border-l ${selectedAttendee.entryImageCornersClass}`} />
+                                        <div className={`absolute top-0 right-0 w-2 h-2 border-t border-r ${selectedAttendee.entryImageCornersClass}`} />
+                                        <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l ${selectedAttendee.entryImageCornersClass}`} />
+                                        <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r ${selectedAttendee.entryImageCornersClass}`} />
+                                      </div>
+                                      <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300 z-10">
+                                        {inImages[Math.min(inImageIndex, inImages.length - 1)]?.label} ({Math.min(inImageIndex, inImages.length - 1) + 1}/{inImages.length})
+                                      </span>
+                                      <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.entryMatchBadgeClass} z-10`}>
+                                        99.2% MATCH
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center text-slate-600">
+                                      <Camera size={20} className="text-slate-700 mb-1" />
+                                      <span className="text-[9px] text-slate-500 font-medium">Không có dữ liệu vào</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
 
-                          let exitColor = '#000000';
-                          if (!row.thoiGianRa) {
-                            exitColor = '#94A3B8';
-                          } else {
-                            const outSec = timeStringToSeconds(row.thoiGianRa);
-                            const endSec = timeStringToSeconds(meetingEndTime);
-                            const earlinessSec = endSec - outSec;
-                            if (earlinessSec > 0) {
-                              if (earlinessSec <= 900) {
-                                exitColor = '#000000';
-                              } else if (earlinessSec <= 1800) {
-                                exitColor = '#D97706';
-                              } else {
-                                exitColor = '#DC2626';
-                              }
-                            }
-                          }
+                              {/* Exit Section */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ảnh lúc ra khỏi phòng</span>
+                                  {selectedAttendee.thoiGianRa ? (
+                                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedAttendee.exitBadgeClass}`}>{selectedAttendee.thoiGianRa}</span>
+                                  ) : (
+                                    <span className="text-[10px] text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">Vắng</span>
+                                  )}
+                                </div>
+                                <div className="relative aspect-video w-full rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#0d0e12] flex items-center justify-center group shadow-inner">
+                                  {outImages.length > 0 ? (
+                                    <>
+                                      <img
+                                        src={outImages[Math.min(outImageIndex, outImages.length - 1)]?.url}
+                                        alt={outImages[Math.min(outImageIndex, outImages.length - 1)]?.label}
+                                        className="w-full h-full object-contain transition-transform group-hover:scale-105"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                      {outImages.length > 1 && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOutImageIndex(prev => (prev - 1 + outImages.length) % outImages.length);
+                                            }}
+                                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                          >
+                                            <ChevronLeft size={14} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setOutImageIndex(prev => (prev + 1) % outImages.length);
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white p-1 rounded-full border border-slate-700/50 transition cursor-pointer z-10"
+                                          >
+                                            <ChevronRight size={14} />
+                                          </button>
+                                        </>
+                                      )}
+                                      <div className={`absolute inset-2 border ${selectedAttendee.exitImageBorderClass} rounded pointer-events-none z-0`}>
+                                        <div className={`absolute top-0 left-0 w-2 h-2 border-t border-l ${selectedAttendee.exitImageCornersClass}`} />
+                                        <div className={`absolute top-0 right-0 w-2 h-2 border-t border-r ${selectedAttendee.exitImageCornersClass}`} />
+                                        <div className={`absolute bottom-0 left-0 w-2 h-2 border-b border-l ${selectedAttendee.exitImageCornersClass}`} />
+                                        <div className={`absolute bottom-0 right-0 w-2 h-2 border-b border-r ${selectedAttendee.exitImageCornersClass}`} />
+                                      </div>
+                                      <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 rounded border border-slate-700/50 text-slate-300 z-10">
+                                        {outImages[Math.min(outImageIndex, outImages.length - 1)]?.label} ({Math.min(outImageIndex, outImages.length - 1) + 1}/{outImages.length})
+                                      </span>
+                                      <span className={`absolute bottom-1 right-1 text-[8px] font-mono bg-black/80 px-1 rounded border ${selectedAttendee.exitMatchBadgeClass} z-10`}>
+                                        98.6% MATCH
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center text-slate-600">
+                                      <Camera size={20} className="text-slate-700 mb-1" />
+                                      <span className="text-[9px] text-slate-500 font-medium">Không có dữ liệu ra</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center p-4 text-slate-500 text-center">
+                              <AlertTriangle size={24} className="text-slate-600 mb-1" />
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Chưa chọn nhân sự</span>
+                              <p className="text-[9px] text-slate-500 mt-1 max-w-[180px]">
+                                Vui lòng click chọn nhân sự trong danh sách để xem chi tiết ảnh nhận diện vào/ra.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                          let ratioColor = '#000000';
-                          if (!row.thoiGianVao && !row.thoiGianRa) {
-                            ratioColor = '#DC2626';
-                          } else if (row.ratioPercent > 95) {
-                            ratioColor = '#059669';
-                          } else {
-                            ratioColor = '#D97706';
-                          }
+                      {/* Bottom Status Bar with Pagination & Page size limit switcher */}
+                      <div className="h-14 bg-[#14151c] border-t border-[#21232d] px-4 flex items-center justify-between shrink-0">
+                        {/* Page size switcher: 20 - 30 - 40 - 50 */}
+                        <div className="flex items-center space-x-2 text-xs">
+                          <span className="text-slate-400 font-sans">Giới hạn:</span>
+                          <div className="flex rounded-lg overflow-hidden border border-[#2d2f3c] bg-[#111218]">
+                            {[20, 30, 40, 50].map(limit => (
+                              <button
+                                key={limit}
+                                type="button"
+                                onClick={() => {
+                                  setMeetingItemsPerPage(limit);
+                                  setMeetingCurrentPage(1);
+                                }}
+                                className={`px-3 py-1 text-xs font-semibold font-mono transition cursor-pointer ${meetingItemsPerPage === limit
+                                  ? 'bg-[#00a2e8] text-white'
+                                  : 'bg-[#1c1d26] text-slate-300 hover:bg-[#20212a] hover:text-white'
+                                  }`}
+                              >
+                                {limit}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
 
-                          let evalStatusColor = '#000000';
-                          if (row.evaluationType === 'good') {
-                            evalStatusColor = '#059669';
-                          } else if (row.evaluationType === 'early' || row.evaluationType === 'manual') {
-                            evalStatusColor = '#D97706';
-                          } else {
-                            evalStatusColor = '#DC2626';
-                          }
+                        {/* Pagination Controls (same design as first tab) */}
+                        <div className="flex items-center space-x-1.5 font-mono text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setMeetingCurrentPage(1)}
+                            disabled={activeMeetingPage === 1}
+                            className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                          >
+                            <ChevronsLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMeetingCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={activeMeetingPage === 1}
+                            className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition text-xs flex items-center cursor-pointer"
+                          >
+                            <ChevronLeft size={16} className="mr-0.5" />
+                            <span>Trang</span>
+                          </button>
 
-                          return (
-                            <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.ma || ''}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.emp.ten || ''}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.danhSach || ''}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', color: entryColor, fontFamily: 'monospace' }}>{row.thoiGianVao || '--:--:--'}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', color: exitColor, fontFamily: 'monospace' }}>{row.thoiGianRa || '--:--:--'}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', color: ratioColor }}>{row.ratioPercent != null ? `${row.ratioPercent}%` : ''}</td>
-                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '600', color: evalStatusColor }}>{row.evaluationText || ''}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })()}
+                          <div className="bg-[#1b1c25] border border-[#2e303f] px-3 py-1 rounded text-white flex items-center space-x-1 font-semibold font-sans">
+                            <input
+                              type="text"
+                              value={activeMeetingPage}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (val > 0 && val <= totalMeetingPages) setMeetingCurrentPage(val);
+                              }}
+                              className="w-4 bg-transparent text-center font-mono focus:outline-none text-[#00a2e8]"
+                            />
+                            <span className="text-slate-500">/</span>
+                            <span>{totalMeetingPages}</span>
+                          </div>
 
-            {/* Hidden Event Logs PDF Container */}
-            <div
-              id="event-logs-pdf-template"
-              style={{
-                position: 'absolute',
-                left: '-9999px',
-                top: '-9999px',
-                width: '1024px',
-                backgroundColor: '#ffffff',
-                color: '#000000',
-              }}
-            >
-              <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
-                <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
-                  DANH SÁCH SỰ KIỆN GHI NHẬN
-                </h2>
+                          <button
+                            type="button"
+                            onClick={() => setMeetingCurrentPage(prev => Math.min(prev + 1, totalMeetingPages))}
+                            disabled={activeMeetingPage === totalMeetingPages}
+                            className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition text-xs flex items-center cursor-pointer"
+                          >
+                            <span>Trang</span>
+                            <ChevronRight size={16} className="ml-0.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMeetingCurrentPage(totalMeetingPages)}
+                            disabled={activeMeetingPage === totalMeetingPages}
+                            className="p-1 rounded hover:bg-[#1f202b] text-slate-400 disabled:opacity-30 disabled:hover:bg-transparent transition cursor-pointer"
+                          >
+                            <ChevronsRight size={16} />
+                          </button>
+                        </div>
 
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tìm kiếm:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{appliedSearch || 'Tất cả'}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Khu vực:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{appliedZone === 'All' ? 'Tất cả' : appliedZone}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Danh sách:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedList === 'All' ? 'Tất cả' : appliedList}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Loại sự kiện:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedEventType === 'All' ? 'Tất cả' : (appliedEventType === 'in' ? 'Đi vào' : 'Đi ra')}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Từ ngày:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedStartDate || 'Không giới hạn'}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đến ngày:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedEndDate || 'Không giới hạn'}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '8%' }}>STT</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Khu vực</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Họ và tên</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Mã nhân viên</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '18%' }}>Danh sách</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Thời gian</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '10%' }}>Độ chính xác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pdfExportEvents.map((row, idx) => (
-                      <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>
-                          {`${row.vung} (${getAreaSuffix(row)})`}
-                        </td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.ten || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.ma || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>{row.danhSach || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.thoiGian || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{`${row.accuracy || 95}%`}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        {/* Total counts info */}
+                        <div className="text-xs text-slate-400 font-sans hidden sm:block">
+                          Tổng: <span className="font-bold text-slate-100 font-mono">{totalMeetingItems}</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Sidebar Filter Overlay (Full-height right drawer) */}
+      <AnimatePresence>
+        {showFilterModal && (
+          <>
+            {/* Dark backdrop overlay to dismiss when clicked outside */}
+            <motion.div
+              key="filter-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black z-40 cursor-pointer"
+              onClick={() => setShowFilterModal(false)}
+            />
+
+            {/* Scrollable sidebar panel matching image layout */}
+            <motion.div
+              key="filter-sidebar"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.25 }}
+              className="absolute right-0 top-0 bottom-0 w-80 bg-[#16171d] z-50 flex flex-col text-slate-200 shadow-2xl h-full"
+            >
+              {/* Top Header */}
+              <div className="p-4 border-b border-transparent flex items-center justify-between bg-[#111218] shrink-0">
+                <div className="flex items-center space-x-2">
+                  <Filter size={16} className="text-[#00a2e8]" />
+                  <span className="font-bold text-xs text-slate-200 uppercase tracking-wider">Bộ lọc</span>
+                </div>
+                <button
+                  onClick={() => setShowFilterModal(false)}
+                  className="p-1 rounded bg-[#20212a] hover:bg-[#2c2d3a] text-slate-400 hover:text-white transition"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Filter inputs body (scrollable) */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+
+                {/* 1. Mã Đối Tượng / Tên (Moved to top) */}
+                <div className="space-y-1 text-left">
+                  <label className="text-[11px] text-slate-300 font-semibold block">Mã Đối Tượng / Tên</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Nhập tên hoặc mã..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00a2e8]"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Từ Ngày (Time included) */}
+                <div className="space-y-1 text-left">
+                  <label className="text-[11px] text-slate-300 font-semibold block">Từ Ngày</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
+                    />
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Đến Ngày (Time included) */}
+                <div className="space-y-1 text-left">
+                  <label className="text-[11px] text-slate-300 font-semibold block">Đến Ngày</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
+                    />
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00a2e8] [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Khu Vực */}
+                <div className="space-y-1 text-left relative">
+                  <label className="text-[11px] text-slate-300 font-semibold block">Khu Vực</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsOpenZoneDropdown(!isOpenZoneDropdown)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] hover:border-[#00a2e8] rounded px-3 py-2 text-xs text-white text-left flex items-center justify-between transition focus:outline-none"
+                    >
+                      <span>{filterZone === 'All' ? 'Tất Cả' : filterZone}</span>
+                      <ChevronDown size={14} className="text-[#00a2e8]" />
+                    </button>
+
+                    <AnimatePresence>
+                      {isOpenZoneDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 5 }}
+                          className="absolute left-0 right-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded shadow-2xl z-50 overflow-hidden"
+                        >
+                          <div className="p-2 border-b border-[#2d2f3c] flex items-center bg-[#111218]">
+                            <Search size={12} className="text-slate-500 mr-1.5 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Tìm nhanh khu vực..."
+                              value={zoneSearch}
+                              onChange={(e) => setZoneSearch(e.target.value)}
+                              className="w-full bg-[#181921] border border-[#2d2f3c] rounded px-2 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-[#00a2e8]"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                          <div className="max-h-40 overflow-y-auto">
+                            {["All", ...areasData.map(a => a.name)]
+                              .filter(z => z === 'All' || z.toLowerCase().includes(zoneSearch.toLowerCase()))
+                              .map(zoneOption => (
+                                <button
+                                  key={zoneOption}
+                                  type="button"
+                                  onClick={() => {
+                                    setFilterZone(zoneOption);
+                                    setIsOpenZoneDropdown(false);
+                                    setZoneSearch('');
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-[#20212a] ${filterZone === zoneOption ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-medium' : 'text-slate-300'
+                                    }`}
+                                >
+                                  {zoneOption === 'All' ? 'Tất Cả' : zoneOption}
+                                </button>
+                              ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                {/* 5. Nhóm (Real Database values) */}
+                <div className="space-y-1 text-left relative">
+                  <label className="text-[11px] text-slate-300 font-semibold block">Nhóm</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsOpenListDropdown(!isOpenListDropdown)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] hover:border-[#00a2e8] rounded px-3 py-2 text-xs text-white text-left flex items-center justify-between transition focus:outline-none"
+                    >
+                      <span>{filterList === 'All' ? 'Tất Cả' : (humanGroups.find(g => g.id === filterList)?.name || filterList)}</span>
+                      <ChevronDown size={14} className="text-[#00a2e8]" />
+                    </button>
+
+                    <AnimatePresence>
+                      {isOpenListDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 5 }}
+                          className="absolute left-0 right-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded shadow-2xl z-50 overflow-hidden"
+                        >
+                          <div className="max-h-40 overflow-y-auto">
+                            {[
+                              { id: 'All', name: 'Tất Cả' },
+                              ...humanGroups
+                            ].map(listOption => (
+                              <button
+                                key={listOption.id}
+                                type="button"
+                                onClick={() => {
+                                  setFilterList(listOption.id);
+                                  setIsOpenListDropdown(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-[#20212a] ${filterList === listOption.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-medium' : 'text-slate-300'
+                                  }`}
+                              >
+                                {listOption.name}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                {/* 6. Loại sự kiện (New dropdown option) */}
+                <div className="space-y-1 text-left relative">
+                  <label className="text-[11px] text-slate-300 font-semibold block">Loại sự kiện</label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsOpenEventTypeDropdown(!isOpenEventTypeDropdown)}
+                      className="w-full bg-[#181921] border border-[#2d2f3c] hover:border-[#00a2e8] rounded px-3 py-2 text-xs text-white text-left flex items-center justify-between transition focus:outline-none"
+                    >
+                      <span>
+                        {filterEventType === 'All' ? 'Tất Cả' : filterEventType === 'in' ? 'Đi vào' : 'Đi ra'}
+                      </span>
+                      <ChevronDown size={14} className="text-[#00a2e8]" />
+                    </button>
+
+                    <AnimatePresence>
+                      {isOpenEventTypeDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 5 }}
+                          className="absolute left-0 right-0 mt-1 bg-[#181921] border border-[#2d2f3c] rounded shadow-2xl z-50 overflow-hidden"
+                        >
+                          <div className="max-h-40 overflow-y-auto">
+                            {[
+                              { id: 'All', name: 'Tất Cả' },
+                              { id: 'in', name: 'Đi vào' },
+                              { id: 'out', name: 'Đi ra' }
+                            ].map(opt => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => {
+                                  setFilterEventType(opt.id as any);
+                                  setIsOpenEventTypeDropdown(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 text-xs transition-colors hover:bg-[#20212a] ${filterEventType === opt.id ? 'text-[#00a2e8] bg-[#00a2e8]/10 font-medium' : 'text-slate-300'
+                                  }`}
+                              >
+                                {opt.name}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="p-4 border-t border-transparent bg-[#111218] flex items-center justify-center space-x-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setFilterZone('All');
+                    setFilterList('All');
+                    setFilterEventType('All');
+                    setStartDate('');
+                    setEndDate('');
+                    setStartTime('');
+                    setEndTime('');
+                    setFilterTime('');
+                    setSearchType('text');
+                    setSearchImage(null);
+                    setThreshold(0.8);
+                    setAppliedSearch('');
+                    setAppliedZone('All');
+                    setAppliedList('All');
+                    setAppliedEventType('All');
+                    setAppliedStartDate('');
+                    setAppliedEndDate('');
+                    setAppliedStartTime('');
+                    setAppliedEndTime('');
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-1.5 border border-[#2d2f3c] rounded text-xs text-slate-400 hover:text-white hover:bg-[#20212a] transition font-medium"
+                >
+                  Xóa bộ lọc
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedSearch(searchQuery);
+                    setAppliedZone(filterZone);
+                    setAppliedList(filterList);
+                    setAppliedEventType(filterEventType);
+                    setAppliedStartDate(startDate);
+                    setAppliedEndDate(endDate);
+                    setAppliedStartTime(startTime);
+                    setAppliedEndTime(endTime);
+                    setCurrentPage(1);
+                    setShowFilterModal(false);
+                  }}
+                  className="bg-[#008bc8] hover:bg-[#007cb3] text-white font-semibold text-xs py-1.5 px-6 rounded transition-all duration-200 shadow-md"
+                >
+                  Tìm Kiếm
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Hidden Printable PDF Container */}
+      {(() => {
+        const pdfPresentCount = pdfExportRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
+        const pdfTotalCount = pdfExportRoster.length;
+        const pdfRatioSum = pdfExportRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
+        const pdfAvgPercent = pdfTotalCount > 0 ? Math.round(pdfRatioSum / pdfTotalCount) : 100;
+
+        let evalColor = '#000000';
+        if (pdfAvgPercent > 95) {
+          evalColor = '#059669';
+        } else if (pdfAvgPercent > 75) {
+          evalColor = '#D97706';
+        } else {
+          evalColor = '#DC2626';
+        }
+
+        return (
+          <div
+            id="meeting-report-pdf-template"
+            style={{
+              position: 'absolute',
+              left: '-9999px',
+              top: '-9999px',
+              width: '1024px',
+              backgroundColor: '#ffffff',
+              color: '#000000',
+            }}
+          >
+            <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+              <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
+                BÁO CÁO THAM DỰ CUỘC HỌP
+              </h2>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tên cuộc họp:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{selectedMeetingReport?.title || ''}</td>
+                    <td style={{ border: 'none', padding: '8px', width: '20%' }}></td>
+                    <td style={{ border: 'none', padding: '8px', width: '30%' }}></td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Khu vực:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.area || ''}</td>
+                    <td style={{ border: 'none', padding: '8px' }}></td>
+                    <td style={{ border: 'none', padding: '8px' }}></td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Ngày:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.date || ''}</td>
+                    <td style={{ border: 'none', padding: '8px' }}></td>
+                    <td style={{ border: 'none', padding: '8px' }}></td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ bắt đầu:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.startTime || ''}</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Nhóm nhân viên tham gia:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{(selectedMeetingReport?.departments || []).join(', ')}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ kết thúc:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.endTime || ''}</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đánh giá tổng thể:</td>
+                    <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', color: evalColor }}>
+                      {`Tham gia ${pdfPresentCount}/${pdfTotalCount} - Tổng thời gian tham gia (${pdfAvgPercent}%)`}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>STT</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Mã NV</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Họ và tên</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Nhóm</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ vào</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ ra</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>% tham dự</th>
+                    <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Đánh giá</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pdfExportRoster.map((row, idx) => {
+                    let entryColor = '#000000';
+                    if (!row.thoiGianVao) {
+                      entryColor = '#94A3B8';
+                    } else {
+                      const inSec = timeStringToSeconds(row.thoiGianVao);
+                      const startSec = timeStringToSeconds(meetingStartTime);
+                      const latenessSec = inSec - startSec;
+                      if (latenessSec > 0) {
+                        if (latenessSec <= 900) {
+                          entryColor = '#000000';
+                        } else if (latenessSec <= 1800) {
+                          entryColor = '#D97706';
+                        } else {
+                          entryColor = '#DC2626';
+                        }
+                      }
+                    }
+
+                    let exitColor = '#000000';
+                    if (!row.thoiGianRa) {
+                      exitColor = '#94A3B8';
+                    } else {
+                      const outSec = timeStringToSeconds(row.thoiGianRa);
+                      const endSec = timeStringToSeconds(meetingEndTime);
+                      const earlinessSec = endSec - outSec;
+                      if (earlinessSec > 0) {
+                        if (earlinessSec <= 900) {
+                          exitColor = '#000000';
+                        } else if (earlinessSec <= 1800) {
+                          exitColor = '#D97706';
+                        } else {
+                          exitColor = '#DC2626';
+                        }
+                      }
+                    }
+
+                    let ratioColor = '#000000';
+                    if (!row.thoiGianVao && !row.thoiGianRa) {
+                      ratioColor = '#DC2626';
+                    } else if (row.ratioPercent > 95) {
+                      ratioColor = '#059669';
+                    } else {
+                      ratioColor = '#D97706';
+                    }
+
+                    let evalStatusColor = '#000000';
+                    if (row.evaluationType === 'good') {
+                      evalStatusColor = '#059669';
+                    } else if (row.evaluationType === 'early' || row.evaluationType === 'manual') {
+                      evalStatusColor = '#D97706';
+                    } else {
+                      evalStatusColor = '#DC2626';
+                    }
+
+                    return (
+                      <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.ma || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.emp.ten || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.danhSach || ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', color: entryColor, fontFamily: 'monospace' }}>{row.thoiGianVao || '--:--:--'}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', color: exitColor, fontFamily: 'monospace' }}>{row.thoiGianRa || '--:--:--'}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', color: ratioColor }}>{row.ratioPercent != null ? `${row.ratioPercent}%` : ''}</td>
+                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '600', color: evalStatusColor }}>{row.evaluationText || ''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          );
+        );
+      })()}
+
+      {/* Hidden Event Logs PDF Container */}
+      <div
+        id="event-logs-pdf-template"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          top: '-9999px',
+          width: '1024px',
+          backgroundColor: '#ffffff',
+          color: '#000000',
+        }}
+      >
+        <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+          <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
+            DANH SÁCH SỰ KIỆN GHI NHẬN
+          </h2>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
+            <tbody>
+              <tr>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tìm kiếm:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{appliedSearch || 'Tất cả'}</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Khu vực:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{appliedZone === 'All' ? 'Tất cả' : appliedZone}</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Danh sách:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedList === 'All' ? 'Tất cả' : appliedList}</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Loại sự kiện:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedEventType === 'All' ? 'Tất cả' : (appliedEventType === 'in' ? 'Đi vào' : 'Đi ra')}</td>
+              </tr>
+              <tr>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Từ ngày:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedStartDate || 'Không giới hạn'}</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đến ngày:</td>
+                <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{appliedEndDate || 'Không giới hạn'}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '8%' }}>STT</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Khu vực</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Họ và tên</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '15%' }}>Mã nhân viên</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '18%' }}>Danh sách</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '22%' }}>Thời gian</th>
+                <th style={{ border: '1px solid #D1D5DB', padding: '10px', width: '10%' }}>Độ chính xác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pdfExportEvents.map((row, idx) => (
+                <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>
+                    {`${row.vung} (${getAreaSuffix(row)})`}
+                  </td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.ten || ''}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.ma || ''}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', textAlign: 'left' }}>{row.danhSach || ''}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontFamily: 'monospace' }}>{row.thoiGian || ''}</td>
+                  <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{`${row.accuracy || 95}%`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 };
