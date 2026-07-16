@@ -1534,14 +1534,14 @@ export const ReportPage = () => {
                 </div>
 
                 <div className="relative">
-                  {/* Dropdown menu - visible on click toggle */}
+                  {/* Dropup menu - visible on click toggle */}
                   {isEventExportOpen && (
                     <>
                       <div
                         className="fixed inset-0 z-30"
                         onClick={() => setIsEventExportOpen(false)}
                       />
-                      <div className="absolute top-full right-0 pt-1 z-40 min-w-[170px]">
+                      <div className="absolute bottom-full right-0 pb-1 z-40 min-w-[170px]">
                         <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
                           <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-[#2d2f3e] text-left">
                             Xuất Excel
