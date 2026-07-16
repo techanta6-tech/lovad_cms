@@ -719,13 +719,16 @@ export const ReportPage = () => {
       ? Math.round(totalRatioSum / attendeeRoster.length)
       : 100;
 
+    const presentCount = attendeeRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
+    const totalCount = attendeeRoster.length;
+
     const infoRows = [
       ['BÁO CÁO THAM DỰ CUỘC HỌP', '', '', '', '', '', '', ''],
-      ['Tên cuộc họp:', meetingInfo.title || '', 'Nhóm nhân viên tham gia:', (meetingInfo.departments || []).join(', '), '', '', '', ''],
-      ['Khu vực:', meetingInfo.area || '', 'Đánh giá tổng thể:', `${avgPercent}%`, '', '', '', ''],
+      ['Tên cuộc họp:', meetingInfo.title || '', '', '', '', '', '', ''],
+      ['Khu vực:', meetingInfo.area || '', '', '', '', '', '', ''],
       ['Ngày:', meetingInfo.date || '', '', '', '', '', '', ''],
-      ['Giờ bắt đầu:', meetingInfo.startTime || '', '', '', '', '', '', ''],
-      ['Giờ kết thúc:', meetingInfo.endTime || '', '', '', '', '', '', ''],
+      ['Giờ bắt đầu:', meetingInfo.startTime || '', 'Nhóm nhân viên tham gia:', (meetingInfo.departments || []).join(', '), '', '', '', ''],
+      ['Giờ kết thúc:', meetingInfo.endTime || '', 'Đánh giá tổng thể:', `Tham gia ${presentCount}/${totalCount} - Tổng thời gian tham gia (${avgPercent}%)`, '', '', '', ''],
       [],
     ];
 
@@ -738,7 +741,7 @@ export const ReportPage = () => {
     const maxColWidths = [];
     for (let R = range.s.r; R <= range.e.r; ++R) {
       for (let C = range.s.c; C <= range.e.c; ++C) {
-        if (R === 0 || ((R === 1 || R === 2) && C >= 3)) continue;
+        if (R === 0 || ((R === 4 || R === 5) && C >= 3)) continue;
         const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
         if (!infoSheet[cellRef]) continue;
         const val = String(infoSheet[cellRef].v || '');
@@ -759,7 +762,7 @@ export const ReportPage = () => {
 
         // Ensure cells in tables exist to render borders properly
         if (!infoSheet[cellRef]) {
-          const isMetadataCell = (R >= 1 && R <= 5 && C <= 1) || (R >= 1 && R <= 2 && C >= 2 && C <= 7);
+          const isMetadataCell = (R >= 1 && R <= 5 && C <= 1) || (R >= 4 && R <= 5 && C >= 2 && C <= 7);
           const isTableDetailCell = (R >= 7 && C <= 7);
           
           if (isMetadataCell || isTableDetailCell) {
@@ -779,8 +782,8 @@ export const ReportPage = () => {
           cell.s.alignment = { horizontal: 'center', vertical: 'center' };
         } else if (R >= 1 && R <= 5) {
           // Meeting Info (Header table)
-          const isLabel = C === 0 || (C === 2 && R <= 2);
-          const isValue = C === 1 || (C >= 3 && R <= 2);
+          const isLabel = C === 0 || (C === 2 && R >= 4);
+          const isValue = C === 1 || (C >= 3 && R >= 4);
           
           if (isLabel || isValue) {
             cell.s.font = { name: 'Segoe UI', sz: 10, bold: isLabel };
@@ -790,6 +793,17 @@ export const ReportPage = () => {
             };
             if (isLabel) {
               cell.s.fill = { fgColor: { rgb: 'F3F4F6' } }; // Background for labels
+            }
+            if (R === 5 && C >= 3) {
+              let evalColor = '000000';
+              if (avgPercent > 95) {
+                evalColor = '059669'; // Good
+              } else if (avgPercent > 75) {
+                evalColor = 'D97706'; // Warning
+              } else {
+                evalColor = 'DC2626'; // Danger
+              }
+              cell.s.font = { name: 'Segoe UI', sz: 10, bold: true, color: { rgb: evalColor } };
             }
           }
         } else if (R === 7) {
@@ -806,6 +820,69 @@ export const ReportPage = () => {
           cell.s.border = {
             top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder
           };
+
+          const rowData = attendeeRoster[R - 8];
+          if (rowData) {
+            let color = '000000'; // Default black
+
+            if (C === 4) {
+              // Giờ vào
+              if (!rowData.thoiGianVao) {
+                color = '94A3B8'; // Gray
+              } else {
+                const inSec = timeStringToSeconds(rowData.thoiGianVao);
+                const startSec = timeStringToSeconds(meetingStartTime);
+                const latenessSec = inSec - startSec;
+                if (latenessSec > 0) {
+                  if (latenessSec <= 900) {
+                    color = '000000';
+                  } else if (latenessSec <= 1800) {
+                    color = 'D97706'; // Amber-600
+                  } else {
+                    color = 'DC2626'; // Rose-600
+                  }
+                }
+              }
+            } else if (C === 5) {
+              // Giờ ra
+              if (!rowData.thoiGianRa) {
+                color = '94A3B8'; // Gray
+              } else {
+                const outSec = timeStringToSeconds(rowData.thoiGianRa);
+                const endSec = timeStringToSeconds(meetingEndTime);
+                const earlinessSec = endSec - outSec;
+                if (earlinessSec > 0) {
+                  if (earlinessSec <= 900) {
+                    color = '000000';
+                  } else if (earlinessSec <= 1800) {
+                    color = 'D97706'; // Amber-600
+                  } else {
+                    color = 'DC2626'; // Rose-600
+                  }
+                }
+              }
+            } else if (C === 6) {
+              // % tham dự
+              if (!rowData.thoiGianVao && !rowData.thoiGianRa) {
+                color = 'DC2626'; // Absent
+              } else if (rowData.ratioPercent > 95) {
+                color = '059669'; // Good
+              } else {
+                color = 'D97706'; // Early
+              }
+            } else if (C === 7) {
+              // Đánh giá
+              if (rowData.evaluationType === 'good') {
+                color = '059669'; // Good
+              } else if (rowData.evaluationType === 'early' || rowData.evaluationType === 'manual') {
+                color = 'D97706'; // Warning
+              } else {
+                color = 'DC2626'; // Danger
+              }
+            }
+
+            cell.s.font = { name: 'Segoe UI', sz: 10, color: { rgb: color } };
+          }
         }
       }
     }
@@ -813,8 +890,8 @@ export const ReportPage = () => {
     // Merge title cells A1:H1 and right side metadata blocks
     infoSheet['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-      { s: { r: 1, c: 3 }, e: { r: 1, c: 7 } },
-      { s: { r: 2, c: 3 }, e: { r: 2, c: 7 } },
+      { s: { r: 4, c: 3 }, e: { r: 4, c: 7 } }, // Nhóm nhân viên tham gia (C5:H5)
+      { s: { r: 5, c: 3 }, e: { r: 5, c: 7 } }, // Đánh giá tổng thể (C6:H6)
     ];
 
     // 4. Set heights to act as vertical cell padding
@@ -2265,7 +2342,7 @@ export const ReportPage = () => {
                                 className="fixed inset-0 z-30"
                                 onClick={() => setIsMeetingExportOpen(false)}
                               />
-                              <div className="absolute bottom-full right-0 pb-1 z-40 min-w-[170px]">
+                              <div className="absolute top-full right-0 pt-1 z-40 min-w-[170px]">
                                 <div className="bg-[#1a1b25] border border-[#2d2f3e] rounded-lg shadow-xl overflow-hidden flex flex-col items-stretch">
                                   <div className="px-3 py-1.5 bg-[#14151c] text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-[#2d2f3e] text-left">
                                     Xuất Excel
@@ -3104,87 +3181,163 @@ export const ReportPage = () => {
             </AnimatePresence>
 
             {/* Hidden Printable PDF Container */}
-            <div
-              id="meeting-report-pdf-template"
-              style={{
-                position: 'absolute',
-                left: '-9999px',
-                top: '-9999px',
-                width: '1024px',
-                backgroundColor: '#ffffff',
-                color: '#000000',
-              }}
-            >
-              <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
-                <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
-                  BÁO CÁO THAM DỰ CUỘC HỌP
-                </h2>
-                
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
-                  <tbody>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tên cuộc họp:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{selectedMeetingReport?.title || ''}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Nhóm nhân viên tham gia:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{(selectedMeetingReport?.departments || []).join(', ')}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Khu vực:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.area || ''}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đánh giá tổng thể:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{`${averageAttendancePercentage}%`}</td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Ngày:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.date || ''}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderRight: 'none' }}></td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}></td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ bắt đầu:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.startTime || ''}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderRight: 'none' }}></td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}></td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ kết thúc:</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.endTime || ''}</td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderRight: 'none' }}></td>
-                      <td style={{ border: '1px solid #D1D5DB', padding: '8px', borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}></td>
-                    </tr>
-                  </tbody>
-                </table>
-                
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>STT</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Mã NV</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Họ và tên</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Nhóm</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ vào</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ ra</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>% tham dự</th>
-                      <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Đánh giá</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pdfExportRoster.map((row, idx) => (
-                      <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.ma || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.emp.ten || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.danhSach || ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.thoiGianVao || '--:--:--'}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.thoiGianRa || '--:--:--'}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold' }}>{row.ratioPercent != null ? `${row.ratioPercent}%` : ''}</td>
-                        <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '600' }}>{row.evaluationText || ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {(() => {
+              const pdfPresentCount = pdfExportRoster.filter(r => r.thoiGianVao || r.thoiGianRa).length;
+              const pdfTotalCount = pdfExportRoster.length;
+              const pdfRatioSum = pdfExportRoster.reduce((sum, item) => sum + item.ratioPercent, 0);
+              const pdfAvgPercent = pdfTotalCount > 0 ? Math.round(pdfRatioSum / pdfTotalCount) : 100;
+              
+              let evalColor = '#000000';
+              if (pdfAvgPercent > 95) {
+                evalColor = '#059669';
+              } else if (pdfAvgPercent > 75) {
+                evalColor = '#D97706';
+              } else {
+                evalColor = '#DC2626';
+              }
+              
+              return (
+                <div
+                  id="meeting-report-pdf-template"
+                  style={{
+                    position: 'absolute',
+                    left: '-9999px',
+                    top: '-9999px',
+                    width: '1024px',
+                    backgroundColor: '#ffffff',
+                    color: '#000000',
+                  }}
+                >
+                  <div style={{ padding: '30px', fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+                    <h2 style={{ textAlign: 'center', color: '#0078D7', fontWeight: 'bold', fontSize: '20px', marginBottom: '25px', textTransform: 'uppercase' }}>
+                      BÁO CÁO THAM DỰ CUỘC HỌP
+                    </h2>
+                    
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', fontSize: '12px' }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6', width: '20%' }}>Tên cuộc họp:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', width: '30%' }}>{selectedMeetingReport?.title || ''}</td>
+                          <td style={{ border: 'none', padding: '8px', width: '20%' }}></td>
+                          <td style={{ border: 'none', padding: '8px', width: '30%' }}></td>
+                        </tr>
+                        <tr>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Khu vực:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.area || ''}</td>
+                          <td style={{ border: 'none', padding: '8px' }}></td>
+                          <td style={{ border: 'none', padding: '8px' }}></td>
+                        </tr>
+                        <tr>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Ngày:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.date || ''}</td>
+                          <td style={{ border: 'none', padding: '8px' }}></td>
+                          <td style={{ border: 'none', padding: '8px' }}></td>
+                        </tr>
+                        <tr>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ bắt đầu:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.startTime || ''}</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Nhóm nhân viên tham gia:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{(selectedMeetingReport?.departments || []).join(', ')}</td>
+                        </tr>
+                        <tr>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Giờ kết thúc:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{selectedMeetingReport?.endTime || ''}</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', backgroundColor: '#F3F4F6' }}>Đánh giá tổng thể:</td>
+                          <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', color: evalColor }}>
+                            {`Tham gia ${pdfPresentCount}/${pdfTotalCount} - Tổng thời gian tham gia (${pdfAvgPercent}%)`}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'center' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#0078D7', color: '#ffffff', fontWeight: 'bold' }}>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>STT</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Mã NV</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Họ và tên</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Nhóm</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ vào</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Giờ ra</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>% tham dự</th>
+                          <th style={{ border: '1px solid #D1D5DB', padding: '10px' }}>Đánh giá</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pdfExportRoster.map((row, idx) => {
+                          let entryColor = '#000000';
+                          if (!row.thoiGianVao) {
+                            entryColor = '#94A3B8';
+                          } else {
+                            const inSec = timeStringToSeconds(row.thoiGianVao);
+                            const startSec = timeStringToSeconds(meetingStartTime);
+                            const latenessSec = inSec - startSec;
+                            if (latenessSec > 0) {
+                              if (latenessSec <= 900) {
+                                entryColor = '#000000';
+                              } else if (latenessSec <= 1800) {
+                                entryColor = '#D97706';
+                              } else {
+                                entryColor = '#DC2626';
+                              }
+                            }
+                          }
+
+                          let exitColor = '#000000';
+                          if (!row.thoiGianRa) {
+                            exitColor = '#94A3B8';
+                          } else {
+                            const outSec = timeStringToSeconds(row.thoiGianRa);
+                            const endSec = timeStringToSeconds(meetingEndTime);
+                            const earlinessSec = endSec - outSec;
+                            if (earlinessSec > 0) {
+                              if (earlinessSec <= 900) {
+                                exitColor = '#000000';
+                              } else if (earlinessSec <= 1800) {
+                                exitColor = '#D97706';
+                              } else {
+                                exitColor = '#DC2626';
+                              }
+                            }
+                          }
+
+                          let ratioColor = '#000000';
+                          if (!row.thoiGianVao && !row.thoiGianRa) {
+                            ratioColor = '#DC2626';
+                          } else if (row.ratioPercent > 95) {
+                            ratioColor = '#059669';
+                          } else {
+                            ratioColor = '#D97706';
+                          }
+
+                          let evalStatusColor = '#000000';
+                          if (row.evaluationType === 'good') {
+                            evalStatusColor = '#059669';
+                          } else if (row.evaluationType === 'early' || row.evaluationType === 'manual') {
+                            evalStatusColor = '#D97706';
+                          } else {
+                            evalStatusColor = '#DC2626';
+                          }
+
+                          return (
+                            <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#F9FAFB' }}>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{idx + 1}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.ma || ''}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '500', textAlign: 'left' }}>{row.emp.ten || ''}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px' }}>{row.emp.danhSach || ''}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', color: entryColor, fontFamily: 'monospace' }}>{row.thoiGianVao || '--:--:--'}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', color: exitColor, fontFamily: 'monospace' }}>{row.thoiGianRa || '--:--:--'}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: 'bold', color: ratioColor }}>{row.ratioPercent != null ? `${row.ratioPercent}%` : ''}</td>
+                              <td style={{ border: '1px solid #D1D5DB', padding: '8px', fontWeight: '600', color: evalStatusColor }}>{row.evaluationText || ''}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           );
 };
